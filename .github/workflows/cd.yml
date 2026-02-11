@@ -9,6 +9,12 @@ on:
 
 env:
   DOTNET_VERSION: '8.0.x'
+  CONNECTION_STRING: ${{ secrets.CONNECTION_STRING }}
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+  REVENUECAT_WEBHOOK_SECRET: ${{ secrets.REVENUECAT_WEBHOOK_SECRET }}
 
 jobs:
   build-and-publish:
@@ -28,9 +34,23 @@ jobs:
       
     - name: Build
       run: dotnet build --no-restore --configuration Release
+      env:
+        ConnectionStrings__DefaultConnection: ${{ secrets.CONNECTION_STRING }}
+        Supabase__Url: ${{ secrets.SUPABASE_URL }}
+        Supabase__AnonKey: ${{ secrets.SUPABASE_ANON_KEY }}
+        Supabase__ServiceRoleKey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        Gemini__ApiKey: ${{ secrets.GEMINI_API_KEY }}
+        RevenueCat__WebhookSecret: ${{ secrets.REVENUECAT_WEBHOOK_SECRET }}
       
     - name: Publish
       run: dotnet publish MentorX.API/MentorX.API.csproj --configuration Release --output ./publish --self-contained false
+      env:
+        ConnectionStrings__DefaultConnection: ${{ secrets.CONNECTION_STRING }}
+        Supabase__Url: ${{ secrets.SUPABASE_URL }}
+        Supabase__AnonKey: ${{ secrets.SUPABASE_ANON_KEY }}
+        Supabase__ServiceRoleKey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        Gemini__ApiKey: ${{ secrets.GEMINI_API_KEY }}
+        RevenueCat__WebhookSecret: ${{ secrets.REVENUECAT_WEBHOOK_SECRET }}
       
     - name: Upload artifact
       uses: actions/upload-artifact@v4

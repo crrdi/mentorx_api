@@ -24,11 +24,32 @@ jobs:
       
     - name: Build
       run: dotnet build --no-restore --configuration Release
+      env:
+        ConnectionStrings__DefaultConnection: ${{ secrets.CONNECTION_STRING }}
+        Supabase__Url: ${{ secrets.SUPABASE_URL }}
+        Supabase__AnonKey: ${{ secrets.SUPABASE_ANON_KEY }}
+        Supabase__ServiceRoleKey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        Gemini__ApiKey: ${{ secrets.GEMINI_API_KEY }}
+        RevenueCat__WebhookSecret: ${{ secrets.REVENUECAT_WEBHOOK_SECRET }}
       
     - name: Test
       run: dotnet test --no-build --configuration Release --verbosity normal
       continue-on-error: true
+      env:
+        ConnectionStrings__DefaultConnection: ${{ secrets.CONNECTION_STRING }}
+        Supabase__Url: ${{ secrets.SUPABASE_URL }}
+        Supabase__AnonKey: ${{ secrets.SUPABASE_ANON_KEY }}
+        Supabase__ServiceRoleKey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        Gemini__ApiKey: ${{ secrets.GEMINI_API_KEY }}
+        RevenueCat__WebhookSecret: ${{ secrets.REVENUECAT_WEBHOOK_SECRET }}
       
     - name: Publish
       run: dotnet publish MentorX.API/MentorX.API.csproj --configuration Release --output ./publish
       continue-on-error: true
+      env:
+        ConnectionStrings__DefaultConnection: ${{ secrets.CONNECTION_STRING }}
+        Supabase__Url: ${{ secrets.SUPABASE_URL }}
+        Supabase__AnonKey: ${{ secrets.SUPABASE_ANON_KEY }}
+        Supabase__ServiceRoleKey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        Gemini__ApiKey: ${{ secrets.GEMINI_API_KEY }}
+        RevenueCat__WebhookSecret: ${{ secrets.REVENUECAT_WEBHOOK_SECRET }}
