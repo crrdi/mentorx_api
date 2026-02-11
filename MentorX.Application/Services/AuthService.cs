@@ -30,8 +30,11 @@ public class AuthService : IAuthService
     {
         if (string.IsNullOrEmpty(request.IdToken))
         {
+            _logger.LogWarning("Google auth request received with empty IdToken");
             throw new ArgumentException("IdToken is required");
         }
+
+        _logger.LogInformation("Processing Google authentication request");
 
         // Supabase ile Google ID token ile giriş yap
         var authResponse = await _supabaseAuthService.SignInWithIdTokenAsync(
@@ -42,8 +45,11 @@ public class AuthService : IAuthService
 
         if (authResponse.User == null)
         {
-            throw new UnauthorizedAccessException("Failed to authenticate with Google");
+            _logger.LogWarning("Supabase authentication succeeded but user is null");
+            throw new UnauthorizedAccessException("Google ile kimlik doğrulama başarısız. Lütfen tekrar deneyin.");
         }
+
+        _logger.LogInformation("Google authentication successful for user {UserId}", authResponse.User.Id);
 
         var userId = Guid.Parse(authResponse.User.Id);
         

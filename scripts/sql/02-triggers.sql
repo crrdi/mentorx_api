@@ -5,10 +5,10 @@
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- Users tablosuna kayıt ekle
-  INSERT INTO public.users (
-    id, email, name, avatar, "createdAt", "updatedAt", 
-    "deletedAt", "focusAreas", credits
+  -- Users tablosuna kayıt ekle (Entity Framework table/column naming convention)
+  INSERT INTO public."Users" (
+    "Id", "Email", "Name", "Avatar", "CreatedAt", "UpdatedAt", 
+    "DeletedAt", "FocusAreas", "Credits"
   )
   VALUES (
     NEW.id,
@@ -18,15 +18,15 @@ BEGIN
     NOW(),
     NOW(),
     NULL,
-    '[]'::text[],
+    '[]',
     10
   );
 
-  -- Actor kaydı ekle
-  INSERT INTO public.actors (id, type, "userId", "mentorId", "createdAt", "updatedAt")
+  -- Actor kaydı ekle (Entity Framework table/column naming convention)
+  INSERT INTO public."Actors" ("Id", "Type", "UserId", "MentorId", "CreatedAt", "UpdatedAt")
   VALUES (
     gen_random_uuid(),
-    'user',
+    1,  -- ActorType.User = 1
     NEW.id,
     NULL,
     NOW(),
@@ -44,20 +44,21 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- Counter cache güncellemeleri için trigger'lar
+-- Entity Framework table/column naming convention kullanılıyor
 
 -- UserFollowsMentor için follower count güncelleme
 CREATE OR REPLACE FUNCTION public.update_mentor_follower_count()
 RETURNS TRIGGER AS $$
 BEGIN
   IF TG_OP = 'INSERT' THEN
-    UPDATE public.mentors
-    SET "followerCount" = "followerCount" + 1
-    WHERE id = NEW."mentorId";
+    UPDATE public."Mentors"
+    SET "FollowerCount" = "FollowerCount" + 1
+    WHERE "Id" = NEW."MentorId";
     RETURN NEW;
   ELSIF TG_OP = 'DELETE' THEN
-    UPDATE public.mentors
-    SET "followerCount" = GREATEST("followerCount" - 1, 0)
-    WHERE id = OLD."mentorId";
+    UPDATE public."Mentors"
+    SET "FollowerCount" = GREATEST("FollowerCount" - 1, 0)
+    WHERE "Id" = OLD."MentorId";
     RETURN OLD;
   END IF;
   RETURN NULL;
@@ -74,14 +75,14 @@ CREATE OR REPLACE FUNCTION public.update_insight_like_count()
 RETURNS TRIGGER AS $$
 BEGIN
   IF TG_OP = 'INSERT' THEN
-    UPDATE public.insights
-    SET "likeCount" = "likeCount" + 1
-    WHERE id = NEW."insightId";
+    UPDATE public."Insights"
+    SET "LikeCount" = "LikeCount" + 1
+    WHERE "Id" = NEW."InsightId";
     RETURN NEW;
   ELSIF TG_OP = 'DELETE' THEN
-    UPDATE public.insights
-    SET "likeCount" = GREATEST("likeCount" - 1, 0)
-    WHERE id = OLD."insightId";
+    UPDATE public."Insights"
+    SET "LikeCount" = GREATEST("LikeCount" - 1, 0)
+    WHERE "Id" = OLD."InsightId";
     RETURN OLD;
   END IF;
   RETURN NULL;
@@ -98,23 +99,23 @@ CREATE OR REPLACE FUNCTION public.update_insight_comment_count()
 RETURNS TRIGGER AS $$
 BEGIN
   IF TG_OP = 'INSERT' THEN
-    UPDATE public.insights
-    SET "commentCount" = "commentCount" + 1
-    WHERE id = NEW."insightId";
+    UPDATE public."Insights"
+    SET "CommentCount" = "CommentCount" + 1
+    WHERE "Id" = NEW."InsightId";
     RETURN NEW;
   ELSIF TG_OP = 'DELETE' THEN
-    UPDATE public.insights
-    SET "commentCount" = GREATEST("commentCount" - 1, 0)
-    WHERE id = OLD."insightId";
+    UPDATE public."Insights"
+    SET "CommentCount" = GREATEST("CommentCount" - 1, 0)
+    WHERE "Id" = OLD."InsightId";
     RETURN OLD;
   END IF;
   RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS update_insight_comment_count_trigger ON public.comments;
+DROP TRIGGER IF EXISTS update_insight_comment_count_trigger ON public."Comments";
 CREATE TRIGGER update_insight_comment_count_trigger
-  AFTER INSERT OR DELETE ON public.comments
+  AFTER INSERT OR DELETE ON public."Comments"
   FOR EACH ROW EXECUTE FUNCTION public.update_insight_comment_count();
 
 -- Insights için mentor insight count güncelleme
@@ -122,36 +123,36 @@ CREATE OR REPLACE FUNCTION public.update_mentor_insight_count()
 RETURNS TRIGGER AS $$
 BEGIN
   IF TG_OP = 'INSERT' THEN
-    UPDATE public.mentors
-    SET "insightCount" = "insightCount" + 1
-    WHERE id = NEW."mentorId";
+    UPDATE public."Mentors"
+    SET "InsightCount" = "InsightCount" + 1
+    WHERE "Id" = NEW."MentorId";
     RETURN NEW;
   ELSIF TG_OP = 'DELETE' THEN
-    UPDATE public.mentors
-    SET "insightCount" = GREATEST("insightCount" - 1, 0)
-    WHERE id = OLD."mentorId";
+    UPDATE public."Mentors"
+    SET "InsightCount" = GREATEST("InsightCount" - 1, 0)
+    WHERE "Id" = OLD."MentorId";
     RETURN OLD;
   END IF;
   RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS update_mentor_insight_count_trigger ON public.insights;
+DROP TRIGGER IF EXISTS update_mentor_insight_count_trigger ON public."Insights";
 CREATE TRIGGER update_mentor_insight_count_trigger
-  AFTER INSERT OR DELETE ON public.insights
+  AFTER INSERT OR DELETE ON public."Insights"
   FOR EACH ROW EXECUTE FUNCTION public.update_mentor_insight_count();
 
 -- Yeni mentor oluşturulduğunda otomatik olarak actors tablosuna kayıt ekle
 CREATE OR REPLACE FUNCTION public.handle_new_mentor()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- Actor kaydı ekle
-  INSERT INTO public.actors (id, type, "userId", "mentorId", "createdAt", "updatedAt")
+  -- Actor kaydı ekle (Entity Framework table/column naming convention)
+  INSERT INTO public."Actors" ("Id", "Type", "UserId", "MentorId", "CreatedAt", "UpdatedAt")
   VALUES (
     gen_random_uuid(),
     2,  -- ActorType.Mentor = 2
     NULL,
-    NEW.id,
+    NEW."Id",
     NOW(),
     NOW()
   );
