@@ -29,8 +29,8 @@ RUN mkdir -p /app/logs
 # Copy published app
 COPY --from=publish /app/publish .
 
-# Cloud Run uses PORT environment variable
-ENV ASPNETCORE_URLS=http://0.0.0.0:${PORT:-8080}
+# Cloud Run uses PORT environment variable (defaults to 8080)
+ENV ASPNETCORE_URLS=http://0.0.0.0:8080
 
 EXPOSE 8080
 
