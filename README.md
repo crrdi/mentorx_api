@@ -2,6 +2,8 @@
 
 .NET 8 tabanlı, çok katmanlı mimariye sahip MentorX API projesi.
 
+> **Deployment**: Google Cloud Run'a otomatik deploy edilir.
+
 ## Teknoloji Stack
 
 - **.NET 8** - Framework
