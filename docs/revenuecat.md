@@ -44,6 +44,8 @@ CREATE INDEX idx_users_subscription_status ON Users(subscriptionStatus);
 
 **Endpoint:** `POST /api/webhooks/revenuecat`
 
+**Webhook URL:** `https://mentorx-api-gr2ceodgsq-uc.a.run.app/api/webhooks/revenuecat`
+
 **Authentication:** ❌ Standart Bearer token kullanılmaz. RevenueCat dashboard'da tanımladığınız **Authorization header** (örn: `Bearer {secret}`) ile doğrulanır.
 
 > **Önemli:** RevenueCat kriptografik imza kullanmaz. Sadece dashboard'da ayarladığınız Authorization header değeri ile doğrulama yapılır. Webhook URL'si ve secret RevenueCat Pro planında mevcuttur.
@@ -441,7 +443,9 @@ Bu endpoint'ler implement edilmiştir:
 
 **Konfigürasyon:**
 - `appsettings.json` veya `REVENUECAT_WEBHOOK_SECRET` env variable
-- RevenueCat dashboard: Integrations > Webhooks > Authorization header = `Bearer your_secret`
+- RevenueCat dashboard: Integrations > Webhooks
+  - Webhook URL: `https://mentorx-api-gr2ceodgsq-uc.a.run.app/api/webhooks/revenuecat`
+  - Authorization header: `Bearer your_secret`
 
 **Flutter SDK:** `Purchases.configure(apiKey: "...", appUserID: supabaseUser.id)` ile User.Id kullanın.
 
