@@ -113,7 +113,11 @@ if (app.Environment.IsDevelopment())
 
 app.UseSerilogRequestLogging();
 
-app.UseHttpsRedirection();
+// HTTPS redirection disabled for Cloud Run (load balancer handles HTTPS)
+if (!app.Environment.IsProduction())
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseCors("AllowAll");
 
