@@ -4,8 +4,10 @@ Bu doküman, MentorX API projesi için GitHub Actions'da kullanılması gereken 
 
 ## Gerekli Secret'lar
 
+> **⚠️ ÖNEMLİ:** Secret isimleri sadece harf, rakam ve alt çizgi (_) içerebilir. Boşluk kullanılamaz. Harf veya alt çizgi ile başlamalıdır.
+
 ### 1. Database Connection String
-**Secret Name:** `CONNECTION_STRING` veya `DATABASE_CONNECTION_STRING`
+**Secret Name:** `CONNECTION_STRING`
 
 **Açıklama:** PostgreSQL database connection string (Supabase)
 

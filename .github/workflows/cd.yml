@@ -7,15 +7,6 @@ on:
       - 'v*'
   workflow_dispatch:
 
-env:
-  DOTNET_VERSION: '8.0.x'
-  CONNECTION_STRING: ${{ secrets.CONNECTION_STRING }}
-  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-  SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-  REVENUECAT_WEBHOOK_SECRET: ${{ secrets.REVENUECAT_WEBHOOK_SECRET }}
-
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
@@ -27,7 +18,7 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
+        dotnet-version: '8.0.x'
         
     - name: Restore dependencies
       run: dotnet restore
