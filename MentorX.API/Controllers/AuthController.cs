@@ -26,7 +26,11 @@ public class AuthController : ControllerBase
         {
             if (string.IsNullOrEmpty(request.IdToken))
             {
-                return BadRequest(new { error = "IdToken is required" });
+                _logger.LogWarning("Google auth request received with empty IdToken");
+                return BadRequest(new { 
+                    error = "Google token is missing. Please try signing in again.",
+                    code = "GOOGLE_TOKEN_MISSING"
+                });
             }
 
             var result = await _authService.GoogleAuthAsync(request);
@@ -34,17 +38,28 @@ public class AuthController : ControllerBase
         }
         catch (UnauthorizedAccessException ex)
         {
-            return Unauthorized(new { error = ex.Message });
+            _logger.LogWarning(ex, "Google auth unauthorized: {Message}", ex.Message);
+            return Unauthorized(new { 
+                error = ex.Message,
+                code = "GOOGLE_AUTH_FAILED"
+            });
         }
         catch (ArgumentException ex)
         {
-            return BadRequest(new { error = ex.Message });
+            _logger.LogWarning(ex, "Google auth bad request: {Message}", ex.Message);
+            return BadRequest(new { 
+                error = ex.Message,
+                code = "GOOGLE_AUTH_INVALID_REQUEST"
+            });
         }
         catch (Exception ex)
         {
             var message = ex.InnerException?.Message ?? ex.Message;
             _logger.LogError(ex, "Google auth failed: {Message}", message);
-            return BadRequest(new { error = message });
+            return BadRequest(new { 
+                error = $"An error occurred while signing in with Google: {message}",
+                code = "GOOGLE_AUTH_ERROR"
+            });
         }
     }
 

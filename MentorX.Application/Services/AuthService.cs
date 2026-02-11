@@ -46,7 +46,7 @@ public class AuthService : IAuthService
         if (authResponse.User == null)
         {
             _logger.LogWarning("Supabase authentication succeeded but user is null");
-            throw new UnauthorizedAccessException("Google ile kimlik doğrulama başarısız. Lütfen tekrar deneyin.");
+            throw new UnauthorizedAccessException("Google sign-in failed: Unable to retrieve user information. Please try again.");
         }
 
         _logger.LogInformation("Google authentication successful for user {UserId}", authResponse.User.Id);

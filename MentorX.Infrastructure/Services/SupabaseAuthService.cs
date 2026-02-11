@@ -35,7 +35,11 @@ public class SupabaseAuthService : ISupabaseAuthService
                 throw new ArgumentException("ID token cannot be null or empty");
             }
 
-            _logger.LogDebug("Calling Supabase SignInWithIdToken for provider {Provider}", provider);
+            // Log token info for debugging (first 20 chars only for security)
+            var tokenPreview = idToken.Length > 20 ? idToken.Substring(0, 20) + "..." : idToken;
+            _logger.LogDebug("Calling Supabase SignInWithIdToken for provider {Provider}. Token preview: {TokenPreview}, Token length: {TokenLength}", 
+                provider, tokenPreview, idToken.Length);
+            
             var session = await _supabaseService.Client.Auth.SignInWithIdToken(providerEnum, idToken, accessToken);
             
             if (session == null)
@@ -145,32 +149,57 @@ public class SupabaseAuthService : ISupabaseAuthService
         }
         catch (Supabase.Gotrue.Exceptions.GotrueException ex)
         {
-            _logger.LogError(ex, "Supabase Gotrue error for {Provider} sign in. StatusCode: {StatusCode}, Message: {Message}", 
-                provider, ex.StatusCode, ex.Message);
+            // Log full error details for debugging
+            _logger.LogError(ex, 
+                "Supabase Gotrue error for {Provider} sign in. " +
+                "StatusCode: {StatusCode}, " +
+                "Message: {Message}, " +
+                "Exception Type: {ExceptionType}, " +
+                "Stack Trace: {StackTrace}",
+                provider, 
+                ex.StatusCode, 
+                ex.Message,
+                ex.GetType().Name,
+                ex.StackTrace);
             
             // Supabase'in döndüğü hata mesajını daha anlaşılır hale getir
             var errorMessage = ex.Message;
+            var errorCode = "GOOGLE_AUTH_ERROR";
+            
             if (!string.IsNullOrEmpty(ex.Message))
             {
                 try
                 {
                     // Hata mesajından error tipini çıkarmaya çalış
                     var messageLower = ex.Message.ToLower();
+                    
                     if (messageLower.Contains("invalid") || messageLower.Contains("token") || messageLower.Contains("expired"))
                     {
-                        errorMessage = "Geçersiz Google token. Lütfen tekrar giriş yapmayı deneyin.";
+                        errorMessage = "Google sign-in failed: Invalid or expired token. Please try signing in again.";
+                        errorCode = "GOOGLE_TOKEN_INVALID";
+                        _logger.LogWarning("Token validation failed. This usually means: 1) Token expired, 2) Token format is incorrect, 3) Token was not issued by Google");
                     }
                     else if (messageLower.Contains("provider") || messageLower.Contains("oauth") || messageLower.Contains("configuration"))
                     {
-                        errorMessage = "Google OAuth yapılandırması eksik veya hatalı. Lütfen sistem yöneticisine başvurun.";
+                        errorMessage = "Google sign-in failed: OAuth configuration is missing or incorrect. Please contact system administrator.";
+                        errorCode = "GOOGLE_OAUTH_CONFIG_ERROR";
+                        _logger.LogWarning("OAuth configuration error. Check Supabase Dashboard > Authentication > Providers > Google settings");
                     }
                     else if (ex.StatusCode == 401 || ex.StatusCode == 403)
                     {
-                        errorMessage = "Google ile kimlik doğrulama başarısız. Lütfen tekrar deneyin.";
+                        errorMessage = "Google sign-in failed: Authentication error. Please try again.";
+                        errorCode = "GOOGLE_AUTH_UNAUTHORIZED";
+                        _logger.LogWarning("Unauthorized error (401/403). Check if Google OAuth is properly configured in Supabase");
+                    }
+                    else
+                    {
+                        errorMessage = $"Google sign-in failed: {ex.Message}";
+                        _logger.LogWarning("Unknown error type. Original message: {Message}", ex.Message);
                     }
                 }
-                catch
+                catch (Exception parseEx)
                 {
+                    _logger.LogError(parseEx, "Failed to parse error message. Using original message.");
                     // Parse edilemezse orijinal mesajı kullan
                 }
             }
@@ -180,7 +209,7 @@ public class SupabaseAuthService : ISupabaseAuthService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected error during {Provider} sign in: {Message}", provider, ex.Message);
-            throw new Exception($"Google ile giriş yapılırken bir hata oluştu: {ex.Message}", ex);
+            throw new Exception($"An error occurred while signing in with Google: {ex.Message}", ex);
         }
     }
 
