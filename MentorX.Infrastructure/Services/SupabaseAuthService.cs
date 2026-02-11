@@ -145,29 +145,33 @@ public class SupabaseAuthService : ISupabaseAuthService
         }
         catch (Supabase.Gotrue.Exceptions.GotrueException ex)
         {
-            _logger.LogError(ex, "Supabase Gotrue error for {Provider} sign in. StatusCode: {StatusCode}, Message: {Message}, Response: {Response}", 
-                provider, ex.StatusCode, ex.Message, ex.ResponseContent);
+            _logger.LogError(ex, "Supabase Gotrue error for {Provider} sign in. StatusCode: {StatusCode}, Message: {Message}", 
+                provider, ex.StatusCode, ex.Message);
             
             // Supabase'in döndüğü hata mesajını daha anlaşılır hale getir
             var errorMessage = ex.Message;
-            if (!string.IsNullOrEmpty(ex.ResponseContent))
+            if (!string.IsNullOrEmpty(ex.Message))
             {
                 try
                 {
-                    // JSON response'dan error mesajını çıkarmaya çalış
-                    var responseLower = ex.ResponseContent.ToLower();
-                    if (responseLower.Contains("invalid") || responseLower.Contains("token"))
+                    // Hata mesajından error tipini çıkarmaya çalış
+                    var messageLower = ex.Message.ToLower();
+                    if (messageLower.Contains("invalid") || messageLower.Contains("token") || messageLower.Contains("expired"))
                     {
                         errorMessage = "Geçersiz Google token. Lütfen tekrar giriş yapmayı deneyin.";
                     }
-                    else if (responseLower.Contains("provider") || responseLower.Contains("oauth"))
+                    else if (messageLower.Contains("provider") || messageLower.Contains("oauth") || messageLower.Contains("configuration"))
                     {
                         errorMessage = "Google OAuth yapılandırması eksik veya hatalı. Lütfen sistem yöneticisine başvurun.";
+                    }
+                    else if (ex.StatusCode == 401 || ex.StatusCode == 403)
+                    {
+                        errorMessage = "Google ile kimlik doğrulama başarısız. Lütfen tekrar deneyin.";
                     }
                 }
                 catch
                 {
-                    // JSON parse edilemezse orijinal mesajı kullan
+                    // Parse edilemezse orijinal mesajı kullan
                 }
             }
             
