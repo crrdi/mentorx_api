@@ -27,22 +27,24 @@ public class RevenueCatApiService : IRevenueCatApiService
     {
         try
         {
-            _logger.LogInformation("[RevenueCat API] Fetching customer info for app_user_id: {AppUserId}", appUserId);
+            var hasAuth = _httpClient.DefaultRequestHeaders.Authorization != null;
+            _logger.LogInformation("[RevenueCat API] Fetching customer info for app_user_id: {AppUserId}, HasAuthHeader: {HasAuth}, BaseAddress: {BaseAddress}",
+                appUserId, hasAuth, _httpClient.BaseAddress);
 
             var response = await _httpClient.GetAsync($"/subscribers/{Uri.EscapeDataString(appUserId)}", cancellationToken);
 
             if (!response.IsSuccessStatusCode)
             {
                 var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning("[RevenueCat API] Failed to fetch customer info. Status: {Status}, Response: {Response}", 
-                    response.StatusCode, errorContent);
+                _logger.LogWarning("[RevenueCat API] Failed to fetch customer info. Status: {Status}, HasAuth: {HasAuth}, Response: {Response}", 
+                    response.StatusCode, hasAuth, errorContent);
                 
                 if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
                 {
                     return null;
                 }
 
-                throw new HttpRequestException($"RevenueCat API error: {response.StatusCode} - {errorContent}");
+                throw new HttpRequestException($"RevenueCat API {response.StatusCode} (hasAuth={hasAuth}): {errorContent}");
             }
 
             var jsonContent = await response.Content.ReadAsStringAsync(cancellationToken);

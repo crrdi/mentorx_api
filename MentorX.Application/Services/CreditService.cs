@@ -128,33 +128,43 @@ public class CreditService : ICreditService
         string? winningAppUserId = null;
 
         string? verifiedProductId = null;
+        var debugMessages = new List<string>();
         foreach (var appUserId in appUserIdsToTry)
         {
             _logger.LogInformation("[CreditService] Trying RevenueCat app_user_id: {AppUserId}", appUserId);
-            var (verified, resolvedId, rcProductId) = await _revenueCatApiService.VerifyTransactionAsync(
-                appUserId,
-                string.IsNullOrEmpty(request.TransactionId) ? null : request.TransactionId,
-                request.ProductId);
-            if (verified && !string.IsNullOrEmpty(resolvedId))
+            try
             {
-                isVerified = true;
-                resolvedTransactionId = resolvedId;
-                verifiedProductId = rcProductId;
-                winningAppUserId = appUserId;
-                _logger.LogInformation("[CreditService] Found purchase with app_user_id: {AppUserId}, verifiedProductId: {VerifiedProductId}", appUserId, rcProductId);
-                break;
+                var (verified, resolvedId, rcProductId) = await _revenueCatApiService.VerifyTransactionAsync(
+                    appUserId,
+                    string.IsNullOrEmpty(request.TransactionId) ? null : request.TransactionId,
+                    request.ProductId);
+                debugMessages.Add($"app_user_id={appUserId}: verified={verified}, resolvedId={resolvedId ?? "null"}, rcProductId={rcProductId ?? "null"}");
+                if (verified && !string.IsNullOrEmpty(resolvedId))
+                {
+                    isVerified = true;
+                    resolvedTransactionId = resolvedId;
+                    verifiedProductId = rcProductId;
+                    winningAppUserId = appUserId;
+                    _logger.LogInformation("[CreditService] Found purchase with app_user_id: {AppUserId}, verifiedProductId: {VerifiedProductId}", appUserId, rcProductId);
+                    break;
+                }
+            }
+            catch (Exception ex)
+            {
+                debugMessages.Add($"app_user_id={appUserId}: EXCEPTION={ex.Message}");
             }
         }
 
         if (!isVerified || string.IsNullOrEmpty(resolvedTransactionId))
         {
-            _logger.LogWarning("[CreditService] Transaction verification failed. ProductId: {ProductId}, UserId: {UserId}, TriedAppUserIds: {Ids}",
-                request.ProductId, userId, string.Join(", ", appUserIdsToTry));
+            var debugInfo = string.Join(" | ", debugMessages);
+            _logger.LogWarning("[CreditService] Transaction verification failed. ProductId: {ProductId}, UserId: {UserId}, TriedAppUserIds: {Ids}, Debug: {Debug}",
+                request.ProductId, userId, string.Join(", ", appUserIdsToTry), debugInfo);
             return new VerifyRevenueCatPurchaseResponse
             {
                 Success = false,
                 Verified = false,
-                Error = "Transaction verification failed. No valid purchase found in RevenueCat for this product. Ensure Customer ID is synced to backend (POST /api/users/me/revenuecat-customer) right after purchase, then retry."
+                Error = $"Transaction verification failed. UserId={userId}, RevenueCatCustomerId={user.RevenueCatCustomerId ?? "null"}, TriedIds=[{string.Join(", ", appUserIdsToTry)}], ProductId={request.ProductId}, TransactionId={request.TransactionId ?? "null"}, Debug=[{debugInfo}]"
             };
         }
 
