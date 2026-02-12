@@ -164,7 +164,7 @@ public class CreditService : ICreditService
             {
                 Success = false,
                 Verified = false,
-                Error = $"Transaction verification failed. UserId={userId}, RevenueCatCustomerId={user.RevenueCatCustomerId ?? "null"}, TriedIds=[{string.Join(", ", appUserIdsToTry)}], ProductId={request.ProductId}, TransactionId={request.TransactionId ?? "null"}, Debug=[{debugInfo}]"
+                Error = $"VERIFY_FAIL Debug=[{debugInfo}] | TriedIds=[{string.Join(", ", appUserIdsToTry)}] | ProductId={request.ProductId} | TxId={request.TransactionId ?? "null"} | RcCustId={user.RevenueCatCustomerId ?? "null"}"
             };
         }
 
