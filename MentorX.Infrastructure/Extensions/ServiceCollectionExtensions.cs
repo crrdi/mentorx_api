@@ -21,6 +21,9 @@ public static class ServiceCollectionExtensions
         // Add Supabase service
         services.AddSingleton<SupabaseService>();
 
+        // Storage service for mentor avatars
+        services.AddScoped<IStorageService, SupabaseStorageService>();
+
         // RevenueCat webhook service
         services.AddScoped<IRevenueCatWebhookService, RevenueCatWebhookService>();
 

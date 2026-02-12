@@ -116,8 +116,17 @@ public class InsightsController : ControllerBase
 
         try
         {
-            var result = await _insightService.CreateInsightAsync(userId.Value, request);
-            return CreatedAtAction(nameof(GetInsightById), new { id = result.Id }, result);
+            // Check if it's a thread request
+            if (request.IsThread)
+            {
+                var result = await _insightService.CreateThreadAsync(userId.Value, request);
+                return Ok(new { insights = result });
+            }
+            else
+            {
+                var result = await _insightService.CreateInsightAsync(userId.Value, request);
+                return CreatedAtAction(nameof(GetInsightById), new { id = result.Id }, result);
+            }
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("credits"))
         {
@@ -137,29 +146,9 @@ public class InsightsController : ControllerBase
     [Authorize]
     public async Task<IActionResult> CreateThread([FromBody] CreateInsightRequest request)
     {
-        var userId = GetCurrentUserId();
-        if (userId == null)
-        {
-            return Unauthorized(new { error = "Unauthorized" });
-        }
-
-        try
-        {
-            var result = await _insightService.CreateThreadAsync(userId.Value, request);
-            return Ok(new { insights = result });
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("credits"))
-        {
-            return StatusCode(402, new { error = ex.Message, code = "INSUFFICIENT_CREDITS" });
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            return Forbid(ex.Message);
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
+        // Legacy endpoint - redirects to main CreateInsight with IsThread flag
+        request.IsThread = true;
+        return await CreateInsight(request);
     }
 
     [HttpPost("{id}/like")]

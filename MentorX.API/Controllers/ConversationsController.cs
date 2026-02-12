@@ -72,7 +72,10 @@ public class ConversationsController : ControllerBase
     }
 
     [HttpGet("{id}/messages")]
-    public async Task<IActionResult> GetMessages(Guid id)
+    public async Task<IActionResult> GetMessages(
+        Guid id,
+        [FromQuery] int limit = 50,
+        [FromQuery] int offset = 0)
     {
         var userId = GetCurrentUserId();
         if (userId == null)
@@ -82,8 +85,15 @@ public class ConversationsController : ControllerBase
 
         try
         {
-            var result = await _conversationService.GetMessagesAsync(id, userId.Value);
-            return Ok(result);
+            var result = await _conversationService.GetMessagesAsync(id, userId.Value, limit, offset);
+            return Ok(new
+            {
+                messages = result.Items,
+                total = result.Total,
+                hasMore = result.HasMore,
+                limit = result.Limit,
+                offset = result.Offset
+            });
         }
         catch (UnauthorizedAccessException ex)
         {

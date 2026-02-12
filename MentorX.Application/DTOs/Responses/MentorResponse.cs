@@ -16,4 +16,5 @@ public class MentorResponse
     public DateTime? DeletedAt { get; set; }
     public string? Avatar { get; set; }
     public bool? IsFollowing { get; set; }
+    public string? ExpertisePrompt { get; set; } // Only populated for mentor owner
 }

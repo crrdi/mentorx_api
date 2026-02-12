@@ -16,7 +16,8 @@ public class MappingProfile : Profile
         CreateMap<Mentor, MentorResponse>()
             .ForMember(dest => dest.Role, opt => opt.MapFrom(src => src.Role.Code))
             .ForMember(dest => dest.ExpertiseTags, opt => opt.MapFrom(src => src.MentorTags.Select(mt => mt.Tag.Name).ToList()))
-            .ForMember(dest => dest.IsFollowing, opt => opt.Ignore());
+            .ForMember(dest => dest.IsFollowing, opt => opt.Ignore())
+            .ForMember(dest => dest.ExpertisePrompt, opt => opt.Ignore()); // Set manually only for owner
 
         CreateMap<Mentor, MentorSummaryResponse>()
             .ForMember(dest => dest.Role, opt => opt.MapFrom(src => src.Role.Code));

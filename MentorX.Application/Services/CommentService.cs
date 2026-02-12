@@ -171,7 +171,7 @@ public class CommentService : ICommentService
         };
 
         await _unitOfWork.Comments.AddAsync(comment);
-        await _unitOfWork.Insights.IncrementCommentCountAsync(insightId);
+        // Comment count is automatically incremented by database trigger (see scripts/sql/02-triggers.sql)
         await _unitOfWork.SaveChangesAsync();
 
         var response = _mapper.Map<CommentResponse>(comment);

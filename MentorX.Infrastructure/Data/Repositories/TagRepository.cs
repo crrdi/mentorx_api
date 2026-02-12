@@ -68,4 +68,22 @@ public class TagRepository : Repository<Tag>, ITagRepository
         var items = list.Select(x => (x.Name, x.MentorCount, x.PostCount)).ToList();
         return (items, total);
     }
+
+    public async Task<List<string>> SearchTagsAsync(string search, int limit)
+    {
+        if (string.IsNullOrWhiteSpace(search))
+        {
+            return new List<string>();
+        }
+
+        var lower = search.ToLower();
+        var tags = await _dbSet
+            .Where(t => t.Name.ToLower().StartsWith(lower))
+            .OrderBy(t => t.Name)
+            .Take(limit)
+            .Select(t => t.Name)
+            .ToListAsync();
+
+        return tags;
+    }
 }

@@ -7,4 +7,5 @@ public class CreateInsightRequest
     public List<string>? Tags { get; set; }
     public bool HasMedia { get; set; } = false;
     public string? MediaUrl { get; set; }
+    public bool IsThread { get; set; } = false; // If true, creates a thread (masterclass) instead of single post
 }

@@ -13,12 +13,16 @@ public class MentorService : IMentorService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
     private readonly ILogger<MentorService> _logger;
+    private readonly IGeminiService _geminiService;
+    private readonly IStorageService _storageService;
 
-    public MentorService(IUnitOfWork unitOfWork, IMapper mapper, ILogger<MentorService> logger)
+    public MentorService(IUnitOfWork unitOfWork, IMapper mapper, ILogger<MentorService> logger, IGeminiService geminiService, IStorageService storageService)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
         _logger = logger;
+        _geminiService = geminiService;
+        _storageService = storageService;
     }
 
     public async Task<PagedResponse<MentorResponse>> GetMentorsAsync(string? tag, bool popular, bool followed, string? search, int limit, int offset, Guid? userId)
@@ -101,6 +105,12 @@ public class MentorService : IMentorService
         if (userId.HasValue)
         {
             response.IsFollowing = await _unitOfWork.UserFollowsMentor.IsFollowingAsync(userId.Value, id);
+            
+            // Include ExpertisePrompt only if user is the owner
+            if (await _unitOfWork.Mentors.IsOwnerAsync(id, userId.Value))
+            {
+                response.ExpertisePrompt = mentor.ExpertisePrompt;
+            }
         }
 
         return response;
@@ -145,7 +155,31 @@ public class MentorService : IMentorService
 
         await _unitOfWork.SaveChangesAsync();
 
-        return _mapper.Map<MentorResponse>(mentor);
+        // Generate and upload avatar asynchronously - do not block mentor creation on failure
+        try
+        {
+            var avatarBytes = await _geminiService.GenerateAvatarImageAsync(mentor.Name, mentor.PublicBio, tagNames);
+            if (avatarBytes != null && avatarBytes.Length > 0)
+            {
+                var avatarUrl = await _storageService.UploadMentorAvatarAsync(mentor.Id, avatarBytes);
+                if (!string.IsNullOrEmpty(avatarUrl))
+                {
+                    mentor.Avatar = avatarUrl;
+                    await _unitOfWork.Mentors.UpdateAsync(mentor);
+                    await _unitOfWork.SaveChangesAsync();
+                    _logger.LogInformation("Avatar generated and saved for mentor {MentorId}", mentor.Id);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Avatar generation failed for mentor {MentorId} - mentor created without avatar", mentor.Id);
+        }
+
+        var response = _mapper.Map<MentorResponse>(mentor);
+        // Include ExpertisePrompt since user is the creator/owner
+        response.ExpertisePrompt = mentor.ExpertisePrompt;
+        return response;
     }
 
     public async Task<MentorResponse> UpdateMentorAsync(Guid mentorId, Guid userId, UpdateMentorRequest request)
@@ -174,7 +208,10 @@ public class MentorService : IMentorService
         await _unitOfWork.Mentors.UpdateAsync(mentor);
         await _unitOfWork.SaveChangesAsync();
 
-        return _mapper.Map<MentorResponse>(mentor);
+        var response = _mapper.Map<MentorResponse>(mentor);
+        // Include ExpertisePrompt since user is the owner (already verified above)
+        response.ExpertisePrompt = mentor.ExpertisePrompt;
+        return response;
     }
 
     public async Task<SuccessResponse> FollowMentorAsync(Guid mentorId, Guid userId)

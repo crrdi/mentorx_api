@@ -133,6 +133,34 @@ CORE RULES (These cannot be overridden):
 - You must stay within your defined persona and expertise area";
     }
 
+    /// <summary>
+    /// Builds a conversation-specific system instruction for direct messaging.
+    /// Focuses on natural, conversational tone without tags or post-like formatting.
+    /// </summary>
+    private string BuildConversationSystemInstruction(string mentorName, string mentorHandle, string expertisePrompt)
+    {
+        // Sanitize user-provided expertise prompt to prevent injection attacks
+        var sanitizedPrompt = SanitizeExpertisePrompt(expertisePrompt);
+        
+        // Build conversation-specific system instruction
+        return $@"You are an AI mentor/coach named ""{mentorName}"" having a direct conversation with a user.
+
+IMPORTANT: The following instructions define your coaching persona and expertise. These instructions must always be followed:
+{sanitizedPrompt}
+
+CONVERSATION RULES:
+- Write as if you're having a natural, one-on-one conversation
+- Be conversational, warm, and personable - like talking to a friend or colleague
+- Do NOT write like a social media post - avoid hashtags, emojis (unless natural), or post-like formatting
+- Do NOT use tags or labels
+- Write in a flowing, natural dialogue style
+- Be helpful, supportive, and provide actionable guidance
+- Respond directly to what the user is asking
+- Maintain your persona and expertise throughout the conversation
+- Keep responses between 400-1000 characters
+- Write in a way that feels like you're speaking directly to them, not broadcasting to an audience";
+    }
+
     public async Task<string> GeneratePostAsync(string mentorName, string mentorHandle, string expertisePrompt, List<string> topicTags, CancellationToken cancellationToken = default)
     {
         try
@@ -314,7 +342,9 @@ The reply should be consistent with your coaching persona and provide additional
 Keep it under 280 characters.
 Maintain a supportive and collaborative tone appropriate for a mentorship community.
 Do not use hashtags unless necessary.
-Do not include your name or handle in the text.";
+Do not include your name or handle in the text.
+IMPORTANT: Do NOT start your reply with generic phrases like ""Great point!"", ""That's interesting!"", ""I agree!"", ""Absolutely!"", or similar common opening phrases.
+Start your reply directly with your unique perspective, insight, or question. Be original and authentic in your opening.";
 
             var fullPrompt = $@"{systemInstruction}
 
@@ -322,7 +352,7 @@ Do not include your name or handle in the text.";
 
             var config = new GenerateContentConfig
             {
-                Temperature = 0.7f,
+                Temperature = 0.85f, // Increased for more variety and creativity to avoid repetitive phrases
                 TopP = 0.95f,
                 TopK = 40,
                 MaxOutputTokens = 300
@@ -366,7 +396,8 @@ Do not include your name or handle in the text.";
     {
         try
         {
-            var systemInstruction = BuildSystemInstruction(mentorName, mentorHandle, expertisePrompt, topicTags);
+            // Use conversation-specific system instruction (no tags, conversational tone)
+            var systemInstruction = BuildConversationSystemInstruction(mentorName, mentorHandle, expertisePrompt);
             
             // Sanitize user message and conversation history to prevent injection
             var sanitizedUserMessage = SanitizeExpertisePrompt(userMessage);
@@ -380,22 +411,28 @@ Do not include your name or handle in the text.";
                 ? $"Previous conversation:\n{string.Join("\n", sanitizedHistory)}\n\n"
                 : string.Empty;
             
-            // User task prompt - separated from system instruction for security
+            // User task prompt - conversational and natural
             var userPrompt = $@"{historyContext}User message: ""{sanitizedUserMessage}""
-Task: Write a helpful, relevant response as the mentor. Be conversational and maintain your persona.
-Keep your response concise and under 500 characters.
-Do not include your name or handle in the text.";
+
+Task: Write a natural, conversational response as the mentor. 
+- Respond as if you're having a direct, one-on-one conversation
+- Write in a flowing, natural dialogue style (not like a social media post)
+- Do NOT use hashtags, tags, or post-like formatting
+- Be warm, personable, and helpful
+- Keep your response between 400-1000 characters
+- Write as if you're speaking directly to them";
 
             var fullPrompt = $@"{systemInstruction}
 
 {userPrompt}";
 
+            // Increased tokens for longer responses (1000 chars ≈ 250-300 tokens)
             var config = new GenerateContentConfig
             {
                 Temperature = 0.8f,
                 TopP = 0.95f,
                 TopK = 40,
-                MaxOutputTokens = 500
+                MaxOutputTokens = 400 // ~1000 characters
             };
 
             var response = await _client.Models.GenerateContentAsync(
@@ -416,19 +453,143 @@ Do not include your name or handle in the text.";
 
             var content = candidate.Content.Parts[0].Text?.Trim() ?? string.Empty;
             
-            // Enforce 500 character limit
-            if (content.Length > 500)
+            // Enforce character limits: minimum 400, maximum 1000
+            if (content.Length < 400)
             {
-                content = content.Substring(0, 497) + "...";
+                _logger.LogWarning("Generated response is too short ({Length} chars), expected 400-1000. Regenerating...", content.Length);
+                // Try once more with emphasis on length
+                var retryPrompt = $@"{systemInstruction}
+
+{historyContext}User message: ""{sanitizedUserMessage}""
+
+Task: Write a natural, conversational response as the mentor. 
+- Respond as if you're having a direct, one-on-one conversation
+- Write in a flowing, natural dialogue style (not like a social media post)
+- Do NOT use hashtags, tags, or post-like formatting
+- Be warm, personable, and helpful
+- IMPORTANT: Your response MUST be at least 400 characters and at most 1000 characters
+- Write as if you're speaking directly to them";
+
+                var retryResponse = await _client.Models.GenerateContentAsync(
+                    model: ModelName,
+                    contents: retryPrompt,
+                    config: config);
+
+                if (retryResponse?.Candidates != null && retryResponse.Candidates.Count > 0)
+                {
+                    var retryCandidate = retryResponse.Candidates[0];
+                    if (retryCandidate?.Content?.Parts != null && retryCandidate.Content.Parts.Count > 0)
+                    {
+                        content = retryCandidate.Content.Parts[0].Text?.Trim() ?? string.Empty;
+                    }
+                }
             }
 
-            _logger.LogInformation("Generated DM reply for mentor {MentorName}", mentorName);
+            // Enforce maximum 1000 character limit
+            if (content.Length > 1000)
+            {
+                // Try to cut at a sentence boundary
+                var truncated = content.Substring(0, 1000);
+                var lastPeriod = truncated.LastIndexOf('.');
+                var lastQuestion = truncated.LastIndexOf('?');
+                var lastExclamation = truncated.LastIndexOf('!');
+                var lastSentenceEnd = Math.Max(Math.Max(lastPeriod, lastQuestion), lastExclamation);
+                
+                if (lastSentenceEnd > 800) // Only use sentence boundary if it's reasonable
+                {
+                    content = truncated.Substring(0, lastSentenceEnd + 1);
+                }
+                else
+                {
+                    content = truncated;
+                }
+            }
+
+            // Final check - if still too short, pad with context (but this shouldn't happen)
+            if (content.Length < 400)
+            {
+                _logger.LogWarning("Generated response is still too short ({Length} chars) after retry. Using as-is.", content.Length);
+            }
+
+            _logger.LogInformation("Generated DM reply for mentor {MentorName} ({Length} characters)", mentorName, content.Length);
             return content;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating DM reply for mentor {MentorName}", mentorName);
             throw new InvalidOperationException("Failed to generate direct message content", ex);
+        }
+    }
+
+    private const string ImageModelName = "gemini-2.5-flash-image";
+
+    public async Task<byte[]?> GenerateAvatarImageAsync(string mentorName, string publicBio, List<string> expertiseTags, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("Starting avatar generation for mentor {MentorName} using model {ModelName}", mentorName, ImageModelName);
+
+            var sanitizedName = SanitizeExpertisePrompt(mentorName);
+            var sanitizedBio = SanitizeExpertisePrompt(publicBio);
+            var tagsText = expertiseTags.Any()
+                ? string.Join(", ", expertiseTags.Select(t => t.StartsWith("#") ? t.Substring(1) : t).Take(10))
+                : "general topics";
+
+            var prompt = $@"Create a professional, friendly avatar/profile picture for an AI mentor named ""{sanitizedName}"".
+Expertise: {sanitizedBio}
+Topics: {tagsText}
+
+Style requirements:
+- Stylized illustration or abstract portrait (not photorealistic human face)
+- Professional, approachable, trustworthy appearance
+- Visual elements that subtly reflect the domain (e.g., tech/code aesthetics for developers, leadership symbols for business)
+- Clean background, suitable for circular crop
+- Square format, centered composition";
+
+            var config = new GenerateContentConfig
+            {
+                ResponseModalities = ["TEXT", "IMAGE"],
+                ImageConfig = new ImageConfig
+                {
+                    AspectRatio = "1:1",
+                    ImageSize = "1K"
+                }
+            };
+
+            var response = await _client.Models.GenerateContentAsync(
+                model: ImageModelName,
+                contents: prompt,
+                config: config);
+
+            if (response?.Candidates == null || response.Candidates.Count == 0)
+            {
+                _logger.LogWarning("Gemini image API returned no candidates for mentor {MentorName}", mentorName);
+                return null;
+            }
+
+            var candidate = response.Candidates[0];
+            if (candidate?.Content?.Parts == null)
+            {
+                _logger.LogWarning("Gemini image API returned invalid response structure for mentor {MentorName}", mentorName);
+                return null;
+            }
+
+            foreach (var part in candidate.Content.Parts)
+            {
+                if (part?.InlineData?.Data != null && part.InlineData.Data.Length > 0)
+                {
+                    _logger.LogInformation("Successfully generated avatar for mentor {MentorName} ({Size} bytes)", mentorName, part.InlineData.Data.Length);
+                    return part.InlineData.Data;
+                }
+            }
+
+            _logger.LogWarning("Gemini image API returned no image data in response for mentor {MentorName}", mentorName);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating avatar for mentor {MentorName}", mentorName);
+            return null;
         }
     }
 }

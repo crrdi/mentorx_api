@@ -216,7 +216,7 @@ public class InsightService : IInsightService
 
         insight.InsightTags = tagEntities.Select(t => new Domain.Entities.InsightTag { InsightId = insight.Id, TagId = t.Id }).ToList();
         await _unitOfWork.Insights.AddAsync(insight);
-        await _unitOfWork.Insights.IncrementCommentCountAsync(insight.Id); // This should increment insightCount on mentor
+        // Note: CommentCount starts at 0. It will be incremented automatically by trigger when comments are added.
         await _unitOfWork.SaveChangesAsync();
 
         return _mapper.Map<InsightResponse>(insight);
@@ -323,7 +323,7 @@ public class InsightService : IInsightService
             await _unitOfWork.Insights.AddAsync(threadPost);
         }
 
-        await _unitOfWork.Insights.IncrementCommentCountAsync(masterInsight.Id);
+        // Note: CommentCount starts at 0. It will be incremented automatically by trigger when comments are added.
         await _unitOfWork.SaveChangesAsync();
 
         var responses = new List<InsightResponse> { _mapper.Map<InsightResponse>(masterInsight) };

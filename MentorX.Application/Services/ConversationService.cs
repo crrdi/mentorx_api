@@ -79,13 +79,24 @@ public class ConversationService : IConversationService
 
     public async Task<List<MessageResponse>> GetMessagesAsync(Guid conversationId, Guid userId)
     {
+        // Backward compatibility - get all messages
+        var pagedResult = await GetMessagesAsync(conversationId, userId, int.MaxValue, 0);
+        return pagedResult.Items.ToList();
+    }
+
+    public async Task<PagedResponse<MessageResponse>> GetMessagesAsync(Guid conversationId, Guid userId, int limit, int offset)
+    {
         var conversation = await _unitOfWork.Conversations.GetByIdAsync(conversationId);
         if (conversation == null || conversation.UserId != userId)
         {
             throw new UnauthorizedAccessException("Conversation not found or access denied");
         }
 
-        var messages = await _unitOfWork.Messages.GetByConversationIdAsync(conversationId);
+        // Get total count
+        var total = await _unitOfWork.Messages.GetCountByConversationIdAsync(conversationId);
+
+        // Get paginated messages
+        var messages = await _unitOfWork.Messages.GetByConversationIdAsync(conversationId, limit, offset);
         var responses = new List<MessageResponse>();
 
         foreach (var message in messages)
@@ -120,15 +131,34 @@ public class ConversationService : IConversationService
             responses.Add(response);
         }
 
-        return responses;
+        return new PagedResponse<MessageResponse>
+        {
+            Items = responses,
+            Total = total,
+            HasMore = (offset + responses.Count) < total,
+            Limit = limit,
+            Offset = offset
+        };
     }
 
-    public async Task<MessageResponse> SendMessageAsync(Guid conversationId, Guid userId, CreateMessageRequest request)
+    public async Task<SendMessageResponse> SendMessageAsync(Guid conversationId, Guid userId, CreateMessageRequest request)
     {
         var conversation = await _unitOfWork.Conversations.GetByIdAsync(conversationId);
         if (conversation == null || conversation.UserId != userId)
         {
             throw new UnauthorizedAccessException("Conversation not found or access denied");
+        }
+
+        // Check user credits before allowing message to be sent
+        var user = await _unitOfWork.Users.GetByIdAsync(userId);
+        if (user == null)
+        {
+            throw new KeyNotFoundException("User not found");
+        }
+
+        if (user.Credits < 1)
+        {
+            throw new InvalidOperationException("Insufficient credits");
         }
 
         // Actor kaydı olmalı - User oluşturulurken otomatik oluşturulmalı
@@ -153,43 +183,69 @@ public class ConversationService : IConversationService
         await _unitOfWork.Conversations.UpdateLastMessageAsync(conversationId, request.Content);
         await _unitOfWork.SaveChangesAsync();
 
-        var response = _mapper.Map<MessageResponse>(message);
-        var user = await _unitOfWork.Users.GetByIdAsync(userId);
-        response.Sender = new AuthorResponse
+        // Deduct credit after message is successfully saved
+        user.Credits--;
+        await _unitOfWork.Users.UpdateAsync(user);
+
+        // Create credit transaction record for audit trail
+        var transaction = new Domain.Entities.CreditTransaction
         {
-            Id = user!.Id,
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            Type = CreditTransactionType.Deduction,
+            Amount = -1,
+            BalanceAfter = user.Credits,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        await _unitOfWork.CreditTransactions.AddAsync(transaction);
+        await _unitOfWork.SaveChangesAsync();
+
+        _logger.LogInformation("Credit deducted for user {UserId} for sending message. Remaining credits: {Credits}", userId, user.Credits);
+
+        var userMessageResponse = _mapper.Map<MessageResponse>(message);
+        userMessageResponse.Sender = new AuthorResponse
+        {
+            Id = user.Id,
             Name = user.Name,
             Type = "user"
         };
 
-        // Generate mentor reply asynchronously (fire and forget)
-        _ = Task.Run(async () =>
+        // Generate mentor reply synchronously and return in response
+        MessageResponse? mentorReplyResponse = null;
+        try
         {
-            try
-            {
-                await GenerateMentorReplyAsync(conversationId, request.Content);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to generate mentor reply for conversation {ConversationId}", conversationId);
-            }
-        });
+            mentorReplyResponse = await GenerateMentorReplyAsync(conversationId, request.Content);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to generate mentor reply for conversation {ConversationId}. User message was saved successfully.", conversationId);
+            // Continue without mentor reply - user message is already saved
+        }
 
-        return response;
+        return new SendMessageResponse
+        {
+            UserMessage = userMessageResponse,
+            MentorReply = mentorReplyResponse
+        };
     }
 
-    private async Task GenerateMentorReplyAsync(Guid conversationId, string userMessage)
+    private async Task<MessageResponse?> GenerateMentorReplyAsync(
+        Guid conversationId, 
+        string userMessage)
     {
         var conversation = await _unitOfWork.Conversations.GetByIdAsync(conversationId);
         if (conversation == null)
         {
-            return;
+            _logger.LogWarning("Conversation {ConversationId} not found when generating mentor reply", conversationId);
+            return null;
         }
 
         var mentor = await _unitOfWork.Mentors.GetByIdAsync(conversation.MentorId);
         if (mentor == null)
         {
-            return;
+            _logger.LogWarning("Mentor {MentorId} not found for conversation {ConversationId}", conversation.MentorId, conversationId);
+            return null;
         }
 
         // Get conversation history (last 10 messages)
@@ -201,18 +257,21 @@ public class ConversationService : IConversationService
             .ToList();
 
         // Generate mentor reply using Gemini
+        var mentorActor = await _unitOfWork.Actors.GetByMentorIdAsync(mentor.Id);
+        if (mentorActor == null)
+        {
+            _logger.LogWarning("Mentor actor not found for mentor {MentorId}", mentor.Id);
+            return null;
+        }
+
+        var mentorHandle = $"mentor_{mentor.Id.ToString().Substring(0, 8)}";
+        var tagNames = mentor.MentorTags.Select(mt => mt.Tag.Name).ToList();
+
+        _logger.LogInformation("Generating mentor reply for conversation {ConversationId} using Gemini", conversationId);
+
         string mentorReplyContent;
         try
         {
-            var mentorActor = await _unitOfWork.Actors.GetByMentorIdAsync(mentor.Id);
-            if (mentorActor == null)
-            {
-                return;
-            }
-
-            var mentorHandle = $"mentor_{mentor.Id.ToString().Substring(0, 8)}";
-            var tagNames = mentor.MentorTags.Select(mt => mt.Tag.Name).ToList();
-
             mentorReplyContent = await _geminiService.GenerateDirectMessageAsync(
                 mentor.Name,
                 mentorHandle,
@@ -222,26 +281,40 @@ public class ConversationService : IConversationService
                 conversationHistory,
                 CancellationToken.None);
 
-            // Create mentor reply message
-            var mentorReply = new Domain.Entities.Message
-            {
-                Id = Guid.NewGuid(),
-                ConversationId = conversationId,
-                SenderActorId = mentorActor.Id,
-                Content = mentorReplyContent,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            };
-
-            await _unitOfWork.Messages.AddAsync(mentorReply);
-            await _unitOfWork.Conversations.UpdateLastMessageAsync(conversationId, mentorReplyContent);
-            await _unitOfWork.SaveChangesAsync();
-
-            _logger.LogInformation("Generated mentor reply for conversation {ConversationId}", conversationId);
+            _logger.LogInformation("Successfully generated mentor reply content: {Content}", mentorReplyContent);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error generating mentor reply for conversation {ConversationId}", conversationId);
+            _logger.LogError(ex, "Error generating mentor reply content for conversation {ConversationId}. Error: {ErrorMessage}", conversationId, ex.Message);
+            throw; // Re-throw to be caught by outer try-catch
         }
+
+        // Create mentor reply message
+        var mentorReply = new Domain.Entities.Message
+        {
+            Id = Guid.NewGuid(),
+            ConversationId = conversationId,
+            SenderActorId = mentorActor.Id,
+            Content = mentorReplyContent,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        await _unitOfWork.Messages.AddAsync(mentorReply);
+        await _unitOfWork.Conversations.UpdateLastMessageAsync(conversationId, mentorReplyContent);
+        await _unitOfWork.SaveChangesAsync();
+
+        _logger.LogInformation("Generated and saved mentor reply for conversation {ConversationId}", conversationId);
+
+        // Map to response
+        var mentorReplyResponse = _mapper.Map<MessageResponse>(mentorReply);
+        mentorReplyResponse.Sender = new AuthorResponse
+        {
+            Id = mentor.Id,
+            Name = mentor.Name,
+            Type = "mentor"
+        };
+
+        return mentorReplyResponse;
     }
 }

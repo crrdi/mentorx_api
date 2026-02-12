@@ -497,7 +497,8 @@ const { data: authData, error: authError } = await supabase.auth.signInWithIdTok
 ```json
 {
   "idToken": "apple_identity_token_string",
-  "accessToken": "apple_access_token_string"
+  "accessToken": "apple_access_token_string",
+  "fullName": "John Doe"
 }
 ```
 
@@ -507,6 +508,7 @@ const { data: authData, error: authError } = await supabase.auth.signInWithIdTok
 | `provider` | string | ✅* | `"apple"` | OAuth provider (*OAuth flow için) |
 | `idToken` | string | ✅* | Valid Apple identity token | Apple identity token (*ID token flow için) |
 | `accessToken` | string | ❌ | - | Apple access token (ID token flow için) |
+| `fullName` | string | ❌ | - | Apple'dan gelen ad (sadece ilk girişte client'ta mevcut - credential.fullName) |
 
 **Response (200 OK):**
 ```json
@@ -1650,9 +1652,10 @@ WHERE id = ?;
 
 ---
 
-### GET /api/feed
+### GET /api/insights/feed
 
-**Açıklama:** Kullanıcının takip ettiği mentorların post'larını getirir (personalized feed).
+**Açıklama:** Kullanıcının takip ettiği mentorların post'larını getirir (personalized feed).  
+**Not:** Client'ın **mutlaka** `/api/insights/feed` path'ini kullanması gerekir; `/api/feed` tanımlı değildir.
 
 **Authentication:** ✅ Required
 
@@ -1999,7 +2002,7 @@ ORDER BY c.lastMessageAt DESC;
 
 ### GET /api/conversations/:id/messages
 
-**Açıklama:** Bir konuşmadaki mesajları getirir.
+**Açıklama:** Bir konuşmadaki mesajları getirir. Pagination destekler.
 
 **Authentication:** ✅ Required
 
@@ -2008,12 +2011,19 @@ ORDER BY c.lastMessageAt DESC;
 |----------|------|----------|-------------|
 | `id` | string | ✅ | Conversation ID |
 
+**Query Parameters:**
+| Parameter | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `limit` | integer | ❌ | 50 | Sayfa başına mesaj sayısı |
+| `offset` | integer | ❌ | 0 | Başlangıç pozisyonu |
+
 **Response (200 OK):**
 ```json
-[
-  {
-    "id": "msg_1",
-    "conversationId": "conv_1",
+{
+  "messages": [
+    {
+      "id": "msg_1",
+      "conversationId": "conv_1",
     "senderActorId": "actor_user_1",
     "content": "Hello, I have a question about growth strategies.",
     "createdAt": "2026-02-09T12:00:00Z",
@@ -2043,15 +2053,27 @@ ORDER BY c.lastMessageAt DESC;
       "type": "mentor"
     }
   }
-]
+  ],
+  "total": 2,
+  "hasMore": false,
+  "limit": 50,
+  "offset": 0
+}
 ```
+
+**Notlar:**
+- Mesajlar `createdAt` sırasına göre artan sırada döner (en eski mesaj ilk)
+- Pagination ile eski mesajları yükleyebilirsiniz
+- `hasMore: true` ise daha fazla mesaj var demektir
 
 **Business Logic:**
 1. Token'dan userId çıkarılır
 2. Conversation bulunur ve ownership kontrolü yapılır (`Conversations.userId === userId`)
-3. `Messages` tablosundan mesajlar getirilir (`deletedAt IS NULL`)
-4. `createdAt ASC` sıralaması yapılır (chronological order)
-5. Her mesaj için `Actors` tablosundan sender bilgisi getirilir
+3. Toplam mesaj sayısı hesaplanır (`GetCountByConversationIdAsync`)
+4. Pagination parametrelerine göre mesajlar getirilir (`GetByConversationIdAsync` with limit/offset)
+5. `createdAt ASC` sıralaması yapılır (chronological order - en eski mesaj ilk)
+6. Her mesaj için `Actors` tablosundan sender bilgisi getirilir (User veya Mentor)
+7. Paginated response döner (messages, total, hasMore, limit, offset)
 
 **Database İşlemleri:**
 ```sql
@@ -2059,11 +2081,16 @@ ORDER BY c.lastMessageAt DESC;
 SELECT * FROM Conversations 
 WHERE id = ? AND userId = ?;
 
--- Mesajları getirme
+-- Toplam mesaj sayısı
+SELECT COUNT(*) FROM Messages 
+WHERE conversationId = ? AND deletedAt IS NULL;
+
+-- Paginated mesajları getirme
 SELECT * FROM Messages 
 WHERE conversationId = ? 
   AND deletedAt IS NULL
-ORDER BY createdAt ASC;
+ORDER BY createdAt ASC
+LIMIT ? OFFSET ?;
 
 -- Her mesaj için sender bilgisi
 SELECT 
@@ -2115,22 +2142,50 @@ WHERE a.id = ?;
 **Response (201 Created):**
 ```json
 {
-  "id": "msg_123",
-  "conversationId": "conv_1",
-  "senderActorId": "actor_user_1",
-  "content": "Hello, I have a question about growth strategies.",
-  "createdAt": "2026-02-09T12:00:00Z",
-  "updatedAt": "2026-02-09T12:00:00Z",
-  "editedAt": null,
-  "isEdited": false,
-  "deletedAt": null
+  "userMessage": {
+    "id": "msg_123",
+    "conversationId": "conv_1",
+    "senderActorId": "actor_user_1",
+    "content": "Hello, I have a question about growth strategies.",
+    "createdAt": "2026-02-09T12:00:00Z",
+    "updatedAt": "2026-02-09T12:00:00Z",
+    "editedAt": null,
+    "isEdited": false,
+    "deletedAt": null,
+    "sender": {
+      "id": "user_1",
+      "name": "John Doe",
+      "type": "user"
+    }
+  },
+  "mentorReply": {
+    "id": "msg_124",
+    "conversationId": "conv_1",
+    "senderActorId": "actor_mentor_1",
+    "content": "I'd be happy to help! What specific aspect of growth strategies are you interested in?",
+    "createdAt": "2026-02-09T12:00:05Z",
+    "updatedAt": "2026-02-09T12:00:05Z",
+    "editedAt": null,
+    "isEdited": false,
+    "deletedAt": null,
+    "sender": {
+      "id": "mentor_1",
+      "name": "Growth Strategy AI",
+      "type": "mentor"
+    }
+  }
 }
 ```
+
+**Not:** `mentorReply` alanı `null` olabilir eğer mentor cevabı generate edilemezse (Gemini API hatası vb.). Bu durumda sadece `userMessage` döner.
 
 **Business Logic:**
 1. Token'dan userId çıkarılır
 2. Conversation bulunur ve ownership kontrolü yapılır
-3. Yeni mesaj oluşturulur:
+3. **Kredi kontrolü yapılır:**
+   - User'ın kredisi kontrol edilir (`Users.credits >= 1`)
+   - Yetersiz kredi durumunda `InvalidOperationException("Insufficient credits")` fırlatılır
+4. Yeni mesaj oluşturulur:
    - `id`: UUID formatında (`msg_{uuid}`)
    - `conversationId`: Path'ten
    - `senderActorId`: User'ın actor ID'si
@@ -2140,13 +2195,24 @@ WHERE a.id = ?;
    - `editedAt`: `null`
    - `isEdited`: `false`
    - `deletedAt`: `null`
-4. `Conversations` tablosu güncellenir:
+5. `Conversations` tablosu güncellenir:
    - `lastMessage`: Mesaj içeriği
    - `lastMessageAt`: Şu anki timestamp
    - `updatedAt`: Şu anki timestamp
-5. (Optional) Mentor otomatik cevap verebilir (background job veya async):
-   - Mentor'un `expertisePrompt`'u kullanılarak AI ile cevap generate edilir
-   - Mentor'un actor ID'si ile yeni mesaj oluşturulur
+6. **Kredi düşürme işlemi:**
+   - User'ın kredisi 1 azaltılır (`Users.credits--`)
+   - `CreditTransactions` tablosuna kayıt eklenir:
+     - `Type`: `Deduction`
+     - `Amount`: `-1`
+     - `BalanceAfter`: Yeni kredi bakiyesi
+7. **Mentor cevabı senkron olarak generate edilir:**
+   - Mentor'un `expertisePrompt`'u kullanılarak Gemini AI ile cevap generate edilir
+   - Conversation-specific system prompt kullanılır (tag'ler kullanılmaz, konuşma odaklı)
+   - Son 10 mesajın geçmişi göz önünde bulundurulur
+   - Mentor'un actor ID'si ile yeni mesaj oluşturulur ve DB'ye kaydedilir
+   - Mentor cevabı response'da `mentorReply` alanında döner
+   - **Cevap Özellikleri:** 400-1000 karakter arası, doğal konuşma stili, hashtag/tag kullanılmaz
+   - **Not:** Gemini API hatası olsa bile kullanıcının kredisi düşürülmüş olur ve `mentorReply` `null` döner (kullanıcı mesaj göndermek için ödeme yapıyor, cevap almak için değil)
 
 **Database İşlemleri:**
 ```sql
@@ -2156,6 +2222,10 @@ WHERE id = ? AND userId = ?;
 
 -- User'ın actor ID'si
 SELECT id FROM Actors WHERE userId = ? AND type = 'user';
+
+-- Kredi kontrolü
+SELECT credits FROM Users WHERE id = ?;
+-- Eğer credits < 1 ise hata fırlatılır
 
 -- Transaction başlatılır
 
@@ -2177,23 +2247,50 @@ SET
   updatedAt = NOW()
 WHERE id = ?;
 
+-- Kredi düşürme
+UPDATE Users 
+SET credits = credits - 1, updatedAt = NOW()
+WHERE id = ?;
+
+-- CreditTransaction kaydı oluşturma
+INSERT INTO CreditTransactions (
+  id, userId, type, amount, balanceAfter,
+  createdAt, updatedAt, deletedAt
+)
+VALUES (
+  gen_random_uuid(), ?, 'Deduction', -1, 
+  (SELECT credits FROM Users WHERE id = ?),
+  NOW(), NOW(), NULL
+);
+
 -- Transaction commit
 
--- (Optional) Mentor cevabı için background job tetiklenir
+-- (Optional) Mentor cevabı için background job tetiklenir (async)
 -- Mentor'un actor ID'si
 SELECT a.id FROM Actors a
 JOIN Conversations c ON a.mentorId = c.mentorId
 WHERE c.id = ? AND a.type = 'mentor';
 
--- Mentor'un expertisePrompt'u
-SELECT expertisePrompt FROM Mentors 
-WHERE id = (SELECT mentorId FROM Conversations WHERE id = ?);
+-- Mentor'un expertisePrompt'u ve tag'leri
+SELECT m.expertisePrompt, m.name, t.name as tagName
+FROM Mentors m
+LEFT JOIN MentorTags mt ON m.id = mt.mentorId
+LEFT JOIN Tags t ON mt.tagId = t.id
+WHERE m.id = (SELECT mentorId FROM Conversations WHERE id = ?);
+
+-- Son 10 mesajın geçmişi (mentor cevabı için)
+SELECT senderActorId, content, createdAt
+FROM Messages
+WHERE conversationId = ?
+ORDER BY createdAt DESC
+LIMIT 10;
 ```
 
 **Error Cases:**
 - `401`: Token eksik veya geçersiz
-- `404`: Conversation bulunamadı veya kullanıcıya ait değil
-- `400`: `content` eksik
+- `403`: Conversation bulunamadı veya kullanıcıya ait değil (`UnauthorizedAccessException`)
+- `400`: `content` eksik veya kredi yetersiz (`InvalidOperationException("Insufficient credits")`)
+- `500`: Mesaj kaydetme veya kredi düşürme işlemi başarısız
 
 ---
 

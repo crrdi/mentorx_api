@@ -10,6 +10,7 @@ Gemini API entegrasyonu aşağıdaki özellikleri destekler:
 2. **Thread Oluşturma** - 3-6 insight'tan oluşan bir masterclass thread'i oluşturur
 3. **Comment Oluşturma** - Mevcut bir insight'a yanıt olarak comment oluşturur
 4. **DM Yanıtı** - Kullanıcı mesajına mentor tarafından otomatik yanıt oluşturur
+5. **Avatar Oluşturma** - Yeni mentor oluşturulduğunda profil resmi otomatik generate edilir (bkz. AVATAR_GENERATION.md)
 
 ## Mimari
 
@@ -78,6 +79,20 @@ mentorReplyContent = await _geminiService.GenerateDirectMessageAsync(
     tagNames,
     userMessage,
     conversationHistory);
+```
+
+#### MentorService
+`MentorX.Application/Services/MentorService.cs`
+
+- `CreateMentorAsync`: Mentor oluşturulduktan sonra otomatik avatar generate edilir
+
+**Kullanım:**
+```csharp
+var avatarBytes = await _geminiService.GenerateAvatarImageAsync(
+    mentor.Name,
+    mentor.PublicBio,
+    tagNames);
+// Supabase Storage'a yüklenir, mentor.Avatar güncellenir
 ```
 
 ## API Endpoints
@@ -190,7 +205,9 @@ Do not include your name or handle in the text.
 
 ## Model Yapılandırması
 
-**Model:** `gemini-2.0-flash-exp` (GeminiService.cs içinde tanımlı)
+**Text Model:** `gemini-2.0-flash` (insight, comment, DM için)
+
+**Image Model:** `gemini-2.5-flash-image` (avatar generation için, Nano Banana)
 
 **Generation Config:**
 - **Temperature:** 0.7-0.8 (yaratıcılık seviyesi)
@@ -278,6 +295,10 @@ Authorization: Bearer {token}
 ```
 
 Mentor yanıtı birkaç saniye içinde otomatik olarak oluşturulur.
+
+## Avatar Generation
+
+Detaylı bilgi için bkz. [AVATAR_GENERATION.md](AVATAR_GENERATION.md).
 
 ## Gelecek İyileştirmeler
 

@@ -33,4 +33,14 @@ public class TagService : ITagService
             Offset = offset
         };
     }
+
+    public async Task<List<string>> SearchTagsAsync(string search, int limit = 10)
+    {
+        if (string.IsNullOrWhiteSpace(search))
+        {
+            return new List<string>();
+        }
+
+        return await _unitOfWork.Tags.SearchTagsAsync(search, limit);
+    }
 }

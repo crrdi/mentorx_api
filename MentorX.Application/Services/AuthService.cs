@@ -132,12 +132,12 @@ public class AuthService : IAuthService
         if (user == null)
         {
             // Yeni kullanıcı - profil oluştur
-            // Apple'dan gelen email bilgisini kullan (Apple email'i gizleyebilir)
+            // Apple name sadece ilk girişte client'tan gelir (request.FullName)
             user = new Domain.Entities.User
             {
                 Id = userId,
                 Email = authResponse.User.Email ?? string.Empty,
-                Name = ExtractNameFromAppleToken(request.IdToken) ?? "User",
+                Name = GetAppleUserName(request),
                 Credits = 10,
                 FocusAreas = new List<string>(),
                 CreatedAt = DateTime.UtcNow,
@@ -212,20 +212,14 @@ public class AuthService : IAuthService
         }
     }
 
-    private string? ExtractNameFromAppleToken(string idToken)
+    /// <summary>
+    /// Apple name is only provided by the client on first sign-in (from credential.fullName).
+    /// Apple does not include name in the ID token.
+    /// </summary>
+    private static string GetAppleUserName(AppleAuthRequest request)
     {
-        try
-        {
-            // Apple ID token'dan name bilgisini çıkar
-            // Apple genellikle name bilgisini ilk login'de gönderir
-            // Bu durumda Supabase Auth'dan gelen user metadata'sını kontrol etmek daha iyi olabilir
-            // Şimdilik null döndürüyoruz, Supabase Auth otomatik olarak handle edecek
-            return null;
-        }
-        catch
-        {
-            return null;
-        }
+        var name = request.FullName?.Trim();
+        return !string.IsNullOrEmpty(name) ? name : "User";
     }
 
     public async Task<UserResponse?> GetCurrentUserAsync(string accessToken)

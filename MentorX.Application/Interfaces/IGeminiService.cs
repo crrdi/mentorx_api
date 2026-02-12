@@ -21,4 +21,10 @@ public interface IGeminiService
     /// Generates a direct message reply in a conversation
     /// </summary>
     Task<string> GenerateDirectMessageAsync(string mentorName, string mentorHandle, string expertisePrompt, List<string> topicTags, string userMessage, List<string> conversationHistory, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Generates an avatar image for a mentor based on their profile information
+    /// </summary>
+    /// <returns>PNG image bytes, or null if generation fails</returns>
+    Task<byte[]?> GenerateAvatarImageAsync(string mentorName, string publicBio, List<string> expertiseTags, CancellationToken cancellationToken = default);
 }
