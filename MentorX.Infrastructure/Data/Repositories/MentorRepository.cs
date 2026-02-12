@@ -8,7 +8,8 @@ namespace MentorX.Infrastructure.Data.Repositories;
 public class MentorRepository : Repository<Mentor>, IMentorRepository
 {
     private static IQueryable<Mentor> WithTagIncludes(IQueryable<Mentor> q) =>
-        q.Include(m => m.MentorTags).ThenInclude(mt => mt.Tag);
+        q.Include(m => m.Role)
+         .Include(m => m.MentorTags).ThenInclude(mt => mt.Tag);
 
     public MentorRepository(MentorXDbContext context) : base(context)
     {
