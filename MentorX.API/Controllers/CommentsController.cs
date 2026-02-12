@@ -95,7 +95,7 @@ public class CommentsController : ControllerBase
         catch (UnauthorizedAccessException ex)
         {
             _logger.LogWarning("CreateComment: Forbidden - {ErrorMessage}", ex.Message);
-            return Forbid(ex.Message);
+            return StatusCode(403, new { error = ex.Message });
         }
         catch (Exception ex)
         {

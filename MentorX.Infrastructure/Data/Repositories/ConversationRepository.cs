@@ -14,6 +14,8 @@ public class ConversationRepository : Repository<Conversation>, IConversationRep
     public async Task<IEnumerable<Conversation>> GetByUserIdAsync(Guid userId, int limit, int offset)
     {
         return await _dbSet
+            .Include(c => c.Mentor)
+                .ThenInclude(m => m.Role)
             .Where(c => c.UserId == userId)
             .OrderByDescending(c => c.LastMessageAt)
             .Skip(offset)
@@ -30,6 +32,8 @@ public class ConversationRepository : Repository<Conversation>, IConversationRep
     public async Task<Conversation?> GetByUserAndMentorAsync(Guid userId, Guid mentorId)
     {
         return await _dbSet
+            .Include(c => c.Mentor)
+                .ThenInclude(m => m.Role)
             .FirstOrDefaultAsync(c => c.UserId == userId && c.MentorId == mentorId);
     }
 

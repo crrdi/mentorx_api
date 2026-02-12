@@ -95,9 +95,9 @@ public class ConversationsController : ControllerBase
                 offset = result.Offset
             });
         }
-        catch (UnauthorizedAccessException ex)
+        catch (UnauthorizedAccessException)
         {
-            return Forbid(ex.Message);
+            return StatusCode(403, new { error = "Conversation not found or access denied" });
         }
         catch (Exception ex)
         {
@@ -119,9 +119,9 @@ public class ConversationsController : ControllerBase
             var result = await _conversationService.SendMessageAsync(id, userId.Value, request);
             return CreatedAtAction(nameof(GetMessages), new { id }, result);
         }
-        catch (UnauthorizedAccessException ex)
+        catch (UnauthorizedAccessException)
         {
-            return Forbid(ex.Message);
+            return StatusCode(403, new { error = "Conversation not found or access denied" });
         }
         catch (Exception ex)
         {
