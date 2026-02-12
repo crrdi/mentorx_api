@@ -115,27 +115,57 @@ public class CreditService : ICreditService
             };
         }
 
-        // Verify transaction with RevenueCat API (transactionId optional; when empty, API resolves latest purchase for productId)
-        var appUserId = user.Id.ToString();
-        var (isVerified, resolvedTransactionId) = await _revenueCatApiService.VerifyTransactionAsync(
-            appUserId,
-            string.IsNullOrEmpty(request.TransactionId) ? null : request.TransactionId,
-            request.ProductId);
+        // RevenueCat'ta purchase, o anki app_user_id ile kayıtlı. Anonymous ise $RCAnonymousID:..., login varsa Guid olabilir.
+        // Önce RevenueCatCustomerId (client sync'lediyse) ile dene, bulunamazsa User.Id (Guid) ile dene.
+        var appUserIdsToTry = new List<string>();
+        if (!string.IsNullOrEmpty(user.RevenueCatCustomerId))
+            appUserIdsToTry.Add(user.RevenueCatCustomerId);
+        if (user.Id.ToString() is { } guidStr && !appUserIdsToTry.Contains(guidStr))
+            appUserIdsToTry.Add(guidStr);
+
+        bool isVerified = false;
+        string? resolvedTransactionId = null;
+        string? winningAppUserId = null;
+
+        foreach (var appUserId in appUserIdsToTry)
+        {
+            _logger.LogInformation("[CreditService] Trying RevenueCat app_user_id: {AppUserId}", appUserId);
+            var (verified, resolvedId) = await _revenueCatApiService.VerifyTransactionAsync(
+                appUserId,
+                string.IsNullOrEmpty(request.TransactionId) ? null : request.TransactionId,
+                request.ProductId);
+            if (verified && !string.IsNullOrEmpty(resolvedId))
+            {
+                isVerified = true;
+                resolvedTransactionId = resolvedId;
+                winningAppUserId = appUserId;
+                _logger.LogInformation("[CreditService] Found purchase with app_user_id: {AppUserId}", appUserId);
+                break;
+            }
+        }
 
         if (!isVerified || string.IsNullOrEmpty(resolvedTransactionId))
         {
-            _logger.LogWarning("[CreditService] Transaction verification failed. ProductId: {ProductId}, UserId: {UserId}",
-                request.ProductId, userId);
+            _logger.LogWarning("[CreditService] Transaction verification failed. ProductId: {ProductId}, UserId: {UserId}, TriedAppUserIds: {Ids}",
+                request.ProductId, userId, string.Join(", ", appUserIdsToTry));
             return new VerifyRevenueCatPurchaseResponse
             {
                 Success = false,
                 Verified = false,
-                Error = "Transaction verification failed. No valid purchase found in RevenueCat for this product."
+                Error = "Transaction verification failed. No valid purchase found in RevenueCat for this product. Ensure Customer ID is synced to backend (POST /api/users/me/revenuecat-customer) right after purchase, then retry."
             };
         }
 
         _logger.LogInformation("[CreditService] Transaction verified successfully. ResolvedTransactionId: {TransactionId}, ProductId: {ProductId}",
             resolvedTransactionId, request.ProductId);
+
+        // Persist RevenueCat customer ID if we used it and it wasn't stored yet (e.g. sync happened after verify)
+        if (!string.IsNullOrEmpty(winningAppUserId) && string.IsNullOrEmpty(user.RevenueCatCustomerId))
+        {
+            user.RevenueCatCustomerId = winningAppUserId;
+            await _unitOfWork.Users.UpdateAsync(user);
+            _logger.LogInformation("[CreditService] Set RevenueCatCustomerId to {CustomerId} for user {UserId}", winningAppUserId, userId);
+        }
 
         // Idempotency check: Check if this transaction already processed
         var existingTransaction = (await _unitOfWork.CreditTransactions.FindAsync(
