@@ -127,10 +127,11 @@ public class CreditService : ICreditService
         string? resolvedTransactionId = null;
         string? winningAppUserId = null;
 
+        string? verifiedProductId = null;
         foreach (var appUserId in appUserIdsToTry)
         {
             _logger.LogInformation("[CreditService] Trying RevenueCat app_user_id: {AppUserId}", appUserId);
-            var (verified, resolvedId) = await _revenueCatApiService.VerifyTransactionAsync(
+            var (verified, resolvedId, rcProductId) = await _revenueCatApiService.VerifyTransactionAsync(
                 appUserId,
                 string.IsNullOrEmpty(request.TransactionId) ? null : request.TransactionId,
                 request.ProductId);
@@ -138,8 +139,9 @@ public class CreditService : ICreditService
             {
                 isVerified = true;
                 resolvedTransactionId = resolvedId;
+                verifiedProductId = rcProductId;
                 winningAppUserId = appUserId;
-                _logger.LogInformation("[CreditService] Found purchase with app_user_id: {AppUserId}", appUserId);
+                _logger.LogInformation("[CreditService] Found purchase with app_user_id: {AppUserId}, verifiedProductId: {VerifiedProductId}", appUserId, rcProductId);
                 break;
             }
         }
@@ -185,18 +187,23 @@ public class CreditService : ICreditService
             };
         }
 
-        // Find package by RevenueCat product ID
-        var package = (await _unitOfWork.CreditPackages.FindAsync(
-            p => p.RevenueCatProductId == request.ProductId)).FirstOrDefault();
+        // Find package: prefer RevenueCat-verified id (product or package key), then client request.ProductId
+        var package = !string.IsNullOrEmpty(verifiedProductId)
+            ? (await _unitOfWork.CreditPackages.FindAsync(p =>
+                p.RevenueCatProductId == verifiedProductId || p.RevenueCatPackageId == verifiedProductId)).FirstOrDefault()
+            : null;
+        if (package == null)
+            package = (await _unitOfWork.CreditPackages.FindAsync(p =>
+                p.RevenueCatProductId == request.ProductId || p.RevenueCatPackageId == request.ProductId)).FirstOrDefault();
 
         if (package == null)
         {
-            _logger.LogWarning("[CreditService] Package not found for RevenueCat product ID: {ProductId}", request.ProductId);
+            _logger.LogWarning("[CreditService] Package not found for RevenueCat product ID: {ProductId} or verified: {VerifiedProductId}", request.ProductId, verifiedProductId);
             return new VerifyRevenueCatPurchaseResponse
             {
                 Success = false,
                 Verified = true,
-                Error = $"Package not found for product ID: {request.ProductId}"
+                Error = $"Package not found for product ID: {request.ProductId}. Add RevenueCatProductId (or RevenueCat package key) to CreditPackages."
             };
         }
 

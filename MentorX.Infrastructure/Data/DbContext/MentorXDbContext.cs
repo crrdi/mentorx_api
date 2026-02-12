@@ -267,6 +267,7 @@ public class MentorXDbContext : Microsoft.EntityFrameworkCore.DbContext
             entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
             entity.Property(e => e.Price).HasPrecision(10, 2);
             entity.Property(e => e.RevenueCatProductId).HasMaxLength(255);
+            entity.Property(e => e.RevenueCatPackageId).HasMaxLength(255);
             entity.Property(e => e.Type).HasMaxLength(50).HasDefaultValue("one_time");
         });
 

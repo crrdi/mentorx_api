@@ -46,17 +46,20 @@ public class RevenueCatApiService : IRevenueCatApiService
             }
 
             var jsonContent = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogDebug("[RevenueCat API] Customer info response: {Response}", jsonContent);
+            _logger.LogDebug("[RevenueCat API] Customer info response length: {Length}", jsonContent?.Length ?? 0);
 
-            // RevenueCat API v1 response structure
-            // We need to parse the subscriber object and extract purchases
+            // RevenueCat API v1: GET /subscribers returns { subscriber } or sometimes { value: { subscriber } }
             using var doc = JsonDocument.Parse(jsonContent);
             var root = doc.RootElement;
-
             if (!root.TryGetProperty("subscriber", out var subscriber))
             {
-                _logger.LogWarning("[RevenueCat API] No subscriber object in response");
-                return null;
+                if (root.TryGetProperty("value", out var value) && value.TryGetProperty("subscriber", out subscriber))
+                { /* use subscriber from value */ }
+                else
+                {
+                    _logger.LogWarning("[RevenueCat API] No subscriber object in response. Root keys: {Keys}", string.Join(", ", root.EnumerateObject().Select(p => p.Name)));
+                    return null;
+                }
             }
 
             var customerInfo = new RevenueCatCustomerInfo
@@ -65,51 +68,68 @@ public class RevenueCatApiService : IRevenueCatApiService
                 Purchases = new List<RevenueCatPurchase>()
             };
 
-            // Extract non-subscription purchases from subscriber.non_subscriptions
-            if (subscriber.TryGetProperty("non_subscriptions", out var nonSubscriptions))
+            // Extract non-subscription purchases. RevenueCat v1 uses "id" (not transaction_id) in non_subscriptions items.
+            void AddPurchasesFromObject(JsonElement obj, string productKey)
             {
-                foreach (var productId in nonSubscriptions.EnumerateObject())
+                if (obj.ValueKind != JsonValueKind.Array) return;
+                foreach (var purchase in obj.EnumerateArray())
                 {
-                    foreach (var purchase in productId.Value.EnumerateArray())
+                    var rcId = purchase.TryGetProperty("id", out var i) ? i.GetString() : null;
+                    var storeTxId = purchase.TryGetProperty("store_transaction_id", out var st) ? st.GetString() : null;
+                    var txId = rcId ?? storeTxId
+                        ?? (purchase.TryGetProperty("transaction_id", out var t) ? t.GetString() : null)
+                        ?? (purchase.TryGetProperty("original_transaction_id", out var o) ? o.GetString() : null);
+                    long? purchasedAtMs = null;
+                    if (purchase.TryGetProperty("purchase_date_ms", out var pdm))
+                        purchasedAtMs = pdm.GetInt64();
+                    else if (purchase.TryGetProperty("purchase_date", out var pd))
                     {
-                        var txId = purchase.TryGetProperty("transaction_id", out var t) ? t.GetString()
-                            : purchase.TryGetProperty("original_transaction_id", out var o) ? o.GetString()
-                            : purchase.TryGetProperty("id", out var i) ? i.GetString()
-                            : null;
-                        var purchaseObj = new RevenueCatPurchase
-                        {
-                            ProductId = productId.Name,
-                            TransactionId = txId,
-                            PurchasedAtMs = purchase.TryGetProperty("purchase_date_ms", out var purchaseDate) ? purchaseDate.GetInt64() : null,
-                            Store = purchase.TryGetProperty("store", out var store) ? store.GetString() : null
-                        };
-                        customerInfo.Purchases.Add(purchaseObj);
+                        if (pd.ValueKind == JsonValueKind.String && DateTime.TryParse(pd.GetString(), out var dt))
+                            purchasedAtMs = new DateTimeOffset(dt).ToUnixTimeMilliseconds();
                     }
+                    customerInfo.Purchases.Add(new RevenueCatPurchase
+                    {
+                        ProductId = productKey,
+                        TransactionId = txId,
+                        StoreTransactionId = storeTxId,
+                        PurchasedAtMs = purchasedAtMs,
+                        Store = purchase.TryGetProperty("store", out var store) ? store.GetString() : null
+                    });
                 }
             }
+            if (subscriber.TryGetProperty("non_subscriptions", out var nonSubscriptions))
+            {
+                foreach (var product in nonSubscriptions.EnumerateObject())
+                    AddPurchasesFromObject(product.Value, product.Name);
+            }
+            if (subscriber.TryGetProperty("other_purchases", out var otherPurchases))
+            {
+                foreach (var product in otherPurchases.EnumerateObject())
+                    AddPurchasesFromObject(product.Value, product.Name);
+            }
 
-            // Also check subscriptions for one-time purchases
+            // Subscriptions: each key is product id, value is object with store_transaction_id / original_transaction_id
             if (subscriber.TryGetProperty("subscriptions", out var subscriptions))
             {
                 foreach (var productId in subscriptions.EnumerateObject())
                 {
                     var subscription = productId.Value;
-                    if (subscription.TryGetProperty("purchase_date_ms", out var purchaseDate))
+                    if (!subscription.TryGetProperty("purchase_date_ms", out var purchaseDate)) continue;
+                    var txId = subscription.TryGetProperty("store_transaction_id", out var st) ? st.GetString()
+                        : subscription.TryGetProperty("original_transaction_id", out var ot) ? ot.GetString() : null;
+                    customerInfo.Purchases.Add(new RevenueCatPurchase
                     {
-                        var purchaseObj = new RevenueCatPurchase
-                        {
-                            ProductId = productId.Name,
-                            TransactionId = subscription.TryGetProperty("original_transaction_id", out var txId) ? txId.GetString() : null,
-                            PurchasedAtMs = purchaseDate.GetInt64(),
-                            Store = subscription.TryGetProperty("store", out var store) ? store.GetString() : null
-                        };
-                        customerInfo.Purchases.Add(purchaseObj);
-                    }
+                        ProductId = productId.Name,
+                        TransactionId = txId,
+                        PurchasedAtMs = purchaseDate.GetInt64(),
+                        Store = subscription.TryGetProperty("store", out var store) ? store.GetString() : null
+                    });
                 }
             }
 
-            _logger.LogInformation("[RevenueCat API] Found {Count} purchases for app_user_id: {AppUserId}", 
-                customerInfo.Purchases.Count, appUserId);
+            _logger.LogInformation("[RevenueCat API] Found {Count} purchases for app_user_id: {AppUserId}. Sample: {Sample}",
+                customerInfo.Purchases.Count, appUserId,
+                customerInfo.Purchases.Count == 0 ? "(none)" : string.Join("; ", customerInfo.Purchases.Take(5).Select(p => $"{p.ProductId} id={p.TransactionId} storeTx={p.StoreTransactionId}")));
 
             return customerInfo;
         }
@@ -120,7 +140,7 @@ public class RevenueCatApiService : IRevenueCatApiService
         }
     }
 
-    public async Task<(bool Verified, string? ResolvedTransactionId)> VerifyTransactionAsync(string appUserId, string? transactionId, string productId, CancellationToken cancellationToken = default)
+    public async Task<(bool Verified, string? ResolvedTransactionId, string? VerifiedProductId)> VerifyTransactionAsync(string appUserId, string? transactionId, string productId, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -132,34 +152,32 @@ public class RevenueCatApiService : IRevenueCatApiService
             if (customerInfo?.Purchases == null || customerInfo.Purchases.Count == 0)
             {
                 _logger.LogWarning("[RevenueCat API] No purchases found for app_user_id: {AppUserId}", appUserId);
-                return (false, null);
+                return (false, null, null);
             }
 
-            // When client sends transactionId: RevenueCat may list the purchase under package id ($rc_credits_100) not store product id (com.xxx.credits_100).
-            // So find by transactionId across ALL purchases first; package lookup in backend uses request.ProductId.
+            // When client sends transactionId: find by transactionId across ALL purchases (match RevenueCat id or store_transaction_id).
             if (!string.IsNullOrEmpty(transactionId))
             {
-                var byTransactionId = customerInfo.Purchases.FirstOrDefault(p => p.TransactionId == transactionId);
+                var byTransactionId = customerInfo.Purchases.FirstOrDefault(p =>
+                    p.TransactionId == transactionId || p.StoreTransactionId == transactionId);
                 if (byTransactionId != null)
                 {
                     _logger.LogInformation("[RevenueCat API] Transaction verified by transactionId. TransactionId: {TransactionId}, RevenueCatProductId: {RcProductId}, RequestProductId: {ProductId}",
                         transactionId, byTransactionId.ProductId, productId);
-                    return (true, transactionId);
+                    return (true, transactionId, byTransactionId.ProductId);
                 }
             }
 
-            // No transactionId or not found by id: match by productId (RevenueCat may use store product id or package id like $rc_credits_100)
+            // No transactionId or not found: match by productId (exact or suffix e.g. credits_100)
             var productPurchases = customerInfo.Purchases
                 .Where(p => !string.IsNullOrEmpty(p.TransactionId) && p.ProductId == productId)
                 .OrderByDescending(p => p.PurchasedAtMs ?? 0)
                 .ToList();
-
-            // If no exact productId match, RevenueCat might use package key e.g. $rc_credits_100; try matching by productId containing the store id suffix
             if (productPurchases.Count == 0 && productId.Contains("."))
             {
-                var suffix = productId.Split('.').LastOrDefault(); // e.g. credits_100
+                var suffix = productId.Split('.').LastOrDefault();
                 productPurchases = customerInfo.Purchases
-                    .Where(p => !string.IsNullOrEmpty(p.TransactionId) && (p.ProductId == productId || p.ProductId?.EndsWith(suffix ?? "", StringComparison.OrdinalIgnoreCase) == true))
+                    .Where(p => !string.IsNullOrEmpty(p.TransactionId) && (p.ProductId == productId || (p.ProductId?.EndsWith(suffix ?? "", StringComparison.OrdinalIgnoreCase) == true)))
                     .OrderByDescending(p => p.PurchasedAtMs ?? 0)
                     .ToList();
             }
@@ -168,7 +186,7 @@ public class RevenueCatApiService : IRevenueCatApiService
             {
                 var seenIds = string.Join(", ", customerInfo.Purchases.Select(p => p.ProductId ?? "(null)"));
                 _logger.LogWarning("[RevenueCat API] No purchases found for productId: {ProductId}, app_user_id: {AppUserId}. RevenueCat purchase keys: {Keys}", productId, appUserId, seenIds);
-                return (false, null);
+                return (false, null, null);
             }
 
             if (!string.IsNullOrEmpty(transactionId))
@@ -177,24 +195,22 @@ public class RevenueCatApiService : IRevenueCatApiService
                 if (matching != null)
                 {
                     _logger.LogInformation("[RevenueCat API] Transaction verified. TransactionId: {TransactionId}, ProductId: {ProductId}", transactionId, productId);
-                    return (true, transactionId);
+                    return (true, transactionId, matching.ProductId);
                 }
                 _logger.LogWarning("[RevenueCat API] Transaction not found. TransactionId: {TransactionId}, ProductId: {ProductId}", transactionId, productId);
-                return (false, null);
+                return (false, null, null);
             }
 
-            // No transactionId: use latest purchase for this product
             var latestPurchase = productPurchases.First();
             var resolvedId = latestPurchase.TransactionId;
-            _logger.LogInformation("[RevenueCat API] No transactionId provided. Using latest purchase. ResolvedTransactionId: {ResolvedId}, ProductId: {ProductId}, PurchasedAt: {PurchasedAt}",
-                resolvedId, productId, latestPurchase.PurchasedAtMs);
-            return (true, resolvedId);
+            _logger.LogInformation("[RevenueCat API] No transactionId provided. Using latest purchase. ResolvedTransactionId: {ResolvedId}, ProductId: {ProductId}", resolvedId, productId);
+            return (true, resolvedId, latestPurchase.ProductId);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[RevenueCat API] Error verifying transaction. AppUserId: {AppUserId}, TransactionId: {TransactionId}",
                 appUserId, transactionId ?? "(null)");
-            return (false, null);
+            return (false, null, null);
         }
     }
 }
