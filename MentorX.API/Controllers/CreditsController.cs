@@ -70,6 +70,49 @@ public class CreditsController : ControllerBase
         }
     }
 
+    [HttpPost("purchase-revenuecat")]
+    [Authorize]
+    public async Task<IActionResult> PurchaseCreditsFromRevenueCat([FromBody] VerifyRevenueCatPurchaseRequest request)
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+        {
+            return Unauthorized(new { error = "Unauthorized" });
+        }
+
+        if (string.IsNullOrEmpty(request.TransactionId))
+        {
+            return BadRequest(new { error = "TransactionId is required" });
+        }
+
+        if (string.IsNullOrEmpty(request.ProductId))
+        {
+            return BadRequest(new { error = "ProductId is required" });
+        }
+
+        try
+        {
+            var result = await _creditService.PurchaseCreditsFromRevenueCatAsync(userId.Value, request);
+            
+            if (!result.Success)
+            {
+                if (result.Verified && !string.IsNullOrEmpty(result.Error))
+                {
+                    // Transaction verified but package not found
+                    return BadRequest(result);
+                }
+                // Transaction verification failed
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = "Internal server error", details = ex.Message });
+        }
+    }
+
     private Guid? GetCurrentUserId()
     {
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;

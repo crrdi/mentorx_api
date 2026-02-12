@@ -3,6 +3,7 @@ using System;
 using MentorX.Infrastructure.Data.DbContext;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MentorX.Infrastructure.Migrations
 {
     [DbContext(typeof(MentorXDbContext))]
-    partial class MentorXDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260212172713_AddTransactionIdToCreditTransaction")]
+    partial class AddTransactionIdToCreditTransaction
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

@@ -275,6 +275,8 @@ public class MentorXDbContext : Microsoft.EntityFrameworkCore.DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Type).HasConversion<int>();
+            entity.Property(e => e.TransactionId).HasMaxLength(255);
+            entity.HasIndex(e => e.TransactionId); // Index for idempotency checks
             
             entity.HasOne(e => e.User)
                 .WithMany()

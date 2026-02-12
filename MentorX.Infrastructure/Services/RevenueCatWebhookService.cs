@@ -34,13 +34,34 @@ public class RevenueCatWebhookService : IRevenueCatWebhookService
         _logger.LogInformation("[RevenueCat Webhook] Event: {EventType}, Id: {EventId}, Product: {ProductId}, AppUserId: {AppUserId}",
             evt.Type, evt.Id, evt.ProductId, evt.AppUserId ?? "(null)");
 
-        var alreadyProcessed = await _dbContext.RevenueCatWebhookEvents.AnyAsync(e => e.EventId == evt.Id, cancellationToken);
-        if (alreadyProcessed)
+        // Idempotency check: Try to insert event ID first to prevent race conditions
+        // If event already exists, this will fail and we skip processing
+        // This must happen BEFORE any business logic to prevent duplicate credit additions
+        try
         {
-            _logger.LogInformation("[RevenueCat Webhook] Event {EventId} already processed, skipping", evt.Id);
+            _dbContext.RevenueCatWebhookEvents.Add(new RevenueCatWebhookEvent
+            {
+                EventId = evt.Id,
+                ProcessedAt = DateTime.UtcNow
+            });
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("[RevenueCat Webhook] Event {EventId} registered for processing", evt.Id);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message?.Contains("duplicate") == true || 
+                                            ex.InnerException?.Message?.Contains("unique") == true ||
+                                            ex.InnerException?.Message?.Contains("23505") == true) // PostgreSQL unique violation
+        {
+            _logger.LogInformation("[RevenueCat Webhook] Event {EventId} already processed (duplicate detected), skipping", evt.Id);
             return (true, false, null);
         }
+        catch (DbUpdateException)
+        {
+            // Other database errors - log and rethrow
+            _logger.LogError("[RevenueCat Webhook] Database error while registering event {EventId}", evt.Id);
+            throw;
+        }
 
+        // Handle TRANSFER events separately (they don't require user lookup)
         if (evt.Type == "TRANSFER")
         {
             return await HandleTransferAsync(evt, cancellationToken);
@@ -145,19 +166,19 @@ public class RevenueCatWebhookService : IRevenueCatWebhookService
                 break;
         }
 
-        _dbContext.RevenueCatWebhookEvents.Add(new RevenueCatWebhookEvent
-        {
-            EventId = evt.Id,
-            ProcessedAt = DateTime.UtcNow
-        });
-
+        // Event ID already saved at the beginning for idempotency
+        // Now save all changes (user credits, subscription status, credit transactions)
         await _dbContext.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("[RevenueCat Webhook] Event {EventId} processed successfully", evt.Id);
         return (true, true, null);
     }
 
     private async Task<(bool Success, bool Processed, string? Error)> HandleTransferAsync(
         MentorX.Application.DTOs.Requests.RevenueCatWebhookEventPayload evt, CancellationToken cancellationToken)
     {
+        // Event ID already registered at the beginning of ProcessWebhookAsync
+        // Just process the transfer logic (no database changes needed)
+        
         if (evt.TransferredTo == null || evt.TransferredTo.Count == 0)
         {
             return (true, false, null);
@@ -171,12 +192,7 @@ public class RevenueCatWebhookService : IRevenueCatWebhookService
             _logger.LogInformation("[RevenueCat Webhook] TRANSFER to user {UserId} acknowledged", toGuid);
         }
 
-        _dbContext.RevenueCatWebhookEvents.Add(new RevenueCatWebhookEvent
-        {
-            EventId = evt.Id,
-            ProcessedAt = DateTime.UtcNow
-        });
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        // Event ID already saved at the beginning, no additional changes to save
         return (true, true, null);
     }
 

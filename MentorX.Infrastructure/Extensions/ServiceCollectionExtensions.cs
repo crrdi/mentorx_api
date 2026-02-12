@@ -27,6 +27,20 @@ public static class ServiceCollectionExtensions
         // RevenueCat webhook service
         services.AddScoped<IRevenueCatWebhookService, RevenueCatWebhookService>();
 
+        // RevenueCat REST API service
+        services.AddHttpClient<IRevenueCatApiService, RevenueCatApiService>(client =>
+        {
+            client.BaseAddress = new Uri("https://api.revenuecat.com/v1");
+            client.DefaultRequestHeaders.Add("X-Platform", "api");
+            
+            // Set API key from configuration
+            var apiKey = configuration["RevenueCat:ApiKey"] ?? Environment.GetEnvironmentVariable("REVENUECAT_API_KEY");
+            if (!string.IsNullOrEmpty(apiKey))
+            {
+                client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+            }
+        });
+
         return services;
     }
 }

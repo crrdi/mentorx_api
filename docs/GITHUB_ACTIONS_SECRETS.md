@@ -108,6 +108,45 @@ your_webhook_secret_string
 
 ---
 
+### 7. RevenueCat REST API Key
+**Secret Name:** `REVENUECAT_API_KEY`
+
+**Açıklama:** RevenueCat REST API secret key (Bearer token)
+
+**Format:**
+```
+sk_live_... veya sk_test_...
+```
+
+**Kullanım:**
+- `appsettings.json` içinde `RevenueCat:ApiKey` olarak kullanılır
+- Environment variable olarak `REVENUECAT_API_KEY` şeklinde de okunabilir
+- RevenueCat REST API çağrıları için Authorization header'da kullanılır
+- Purchase verification için gereklidir
+
+**Alma:** [RevenueCat Dashboard](https://app.revenuecat.com/) → Project Settings → API Keys
+
+---
+
+### 8. RevenueCat Project ID (Optional)
+**Secret Name:** `REVENUECAT_PROJECT_ID`
+
+**Açıklama:** RevenueCat project ID (opsiyonel, app_user_id yeterli)
+
+**Format:**
+```
+app_xxxxxxxxxxxx
+```
+
+**Kullanım:**
+- `appsettings.json` içinde `RevenueCat:ProjectId` olarak kullanılır
+- Environment variable olarak `REVENUECAT_PROJECT_ID` şeklinde de okunabilir
+- Şu anda kullanılmıyor ama gelecekte gerekebilir
+
+**Alma:** [RevenueCat Dashboard](https://app.revenuecat.com/) → Project Settings
+
+---
+
 ## GitHub Actions'a Secret Ekleme
 
 ### Adım 1: GitHub Repository'ye Git
@@ -132,6 +171,8 @@ SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY
 GEMINI_API_KEY
 REVENUECAT_WEBHOOK_SECRET
+REVENUECAT_API_KEY
+REVENUECAT_PROJECT_ID
 ```
 
 ---
@@ -148,6 +189,8 @@ env:
   SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
   GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
   REVENUECAT_WEBHOOK_SECRET: ${{ secrets.REVENUECAT_WEBHOOK_SECRET }}
+  REVENUECAT_API_KEY: ${{ secrets.REVENUECAT_API_KEY }}
+  REVENUECAT_PROJECT_ID: ${{ secrets.REVENUECAT_PROJECT_ID }}
 ```
 
 ---
@@ -165,6 +208,8 @@ dotnet user-secrets set "Supabase:AnonKey" "YOUR_ANON_KEY"
 dotnet user-secrets set "Supabase:ServiceRoleKey" "YOUR_SERVICE_ROLE_KEY"
 dotnet user-secrets set "Gemini:ApiKey" "YOUR_GEMINI_API_KEY"
 dotnet user-secrets set "RevenueCat:WebhookSecret" "YOUR_WEBHOOK_SECRET"
+dotnet user-secrets set "RevenueCat:ApiKey" "YOUR_REVENUECAT_API_KEY"
+dotnet user-secrets set "RevenueCat:ProjectId" "YOUR_PROJECT_ID"
 ```
 
 ### Environment Variables
@@ -175,6 +220,8 @@ export SUPABASE_ANON_KEY="YOUR_ANON_KEY"
 export SUPABASE_SERVICE_ROLE_KEY="YOUR_SERVICE_ROLE_KEY"
 export GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
 export REVENUECAT_WEBHOOK_SECRET="YOUR_WEBHOOK_SECRET"
+export REVENUECAT_API_KEY="YOUR_REVENUECAT_API_KEY"
+export REVENUECAT_PROJECT_ID="YOUR_PROJECT_ID"
 ```
 
 ---
