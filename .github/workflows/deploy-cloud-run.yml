@@ -71,6 +71,7 @@ jobs:
           --set-env-vars="Supabase__ServiceRoleKey=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
           --set-env-vars="Gemini__ApiKey=${{ secrets.GEMINI_API_KEY }}" \
           --set-env-vars="RevenueCat__WebhookSecret=${{ secrets.REVENUECAT_WEBHOOK_SECRET }}" \
+          --set-env-vars="RevenueCat__ApiKey=${{ secrets.REVENUECAT_API_KEY }}" \
           --set-env-vars="ASPNETCORE_ENVIRONMENT=Production" \
           --memory=512Mi \
           --cpu=1 \

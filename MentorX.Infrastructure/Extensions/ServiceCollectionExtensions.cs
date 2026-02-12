@@ -35,9 +35,14 @@ public static class ServiceCollectionExtensions
             
             // Set API key from configuration
             var apiKey = configuration["RevenueCat:ApiKey"] ?? Environment.GetEnvironmentVariable("REVENUECAT_API_KEY");
-            if (!string.IsNullOrEmpty(apiKey))
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                Console.WriteLine("⚠️  WARNING: RevenueCat:ApiKey is NOT configured! Purchase verification will FAIL. Set it via user-secrets, appsettings, or REVENUECAT_API_KEY env var.");
+            }
+            else
             {
                 client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+                Console.WriteLine("✅ RevenueCat API key configured (length: {0})", apiKey.Length);
             }
         });
 
