@@ -72,10 +72,14 @@ public class RevenueCatApiService : IRevenueCatApiService
                 {
                     foreach (var purchase in productId.Value.EnumerateArray())
                     {
+                        var txId = purchase.TryGetProperty("transaction_id", out var t) ? t.GetString()
+                            : purchase.TryGetProperty("original_transaction_id", out var o) ? o.GetString()
+                            : purchase.TryGetProperty("id", out var i) ? i.GetString()
+                            : null;
                         var purchaseObj = new RevenueCatPurchase
                         {
                             ProductId = productId.Name,
-                            TransactionId = purchase.TryGetProperty("transaction_id", out var txId) ? txId.GetString() : null,
+                            TransactionId = txId,
                             PurchasedAtMs = purchase.TryGetProperty("purchase_date_ms", out var purchaseDate) ? purchaseDate.GetInt64() : null,
                             Store = purchase.TryGetProperty("store", out var store) ? store.GetString() : null
                         };
@@ -125,39 +129,61 @@ public class RevenueCatApiService : IRevenueCatApiService
 
             var customerInfo = await GetCustomerInfoAsync(appUserId, cancellationToken);
             
-            if (customerInfo?.Purchases == null)
+            if (customerInfo?.Purchases == null || customerInfo.Purchases.Count == 0)
             {
                 _logger.LogWarning("[RevenueCat API] No purchases found for app_user_id: {AppUserId}", appUserId);
                 return (false, null);
             }
 
-            // Purchases for this product (order by most recent)
+            // When client sends transactionId: RevenueCat may list the purchase under package id ($rc_credits_100) not store product id (com.xxx.credits_100).
+            // So find by transactionId across ALL purchases first; package lookup in backend uses request.ProductId.
+            if (!string.IsNullOrEmpty(transactionId))
+            {
+                var byTransactionId = customerInfo.Purchases.FirstOrDefault(p => p.TransactionId == transactionId);
+                if (byTransactionId != null)
+                {
+                    _logger.LogInformation("[RevenueCat API] Transaction verified by transactionId. TransactionId: {TransactionId}, RevenueCatProductId: {RcProductId}, RequestProductId: {ProductId}",
+                        transactionId, byTransactionId.ProductId, productId);
+                    return (true, transactionId);
+                }
+            }
+
+            // No transactionId or not found by id: match by productId (RevenueCat may use store product id or package id like $rc_credits_100)
             var productPurchases = customerInfo.Purchases
-                .Where(p => p.ProductId == productId && !string.IsNullOrEmpty(p.TransactionId))
+                .Where(p => !string.IsNullOrEmpty(p.TransactionId) && p.ProductId == productId)
                 .OrderByDescending(p => p.PurchasedAtMs ?? 0)
                 .ToList();
 
+            // If no exact productId match, RevenueCat might use package key e.g. $rc_credits_100; try matching by productId containing the store id suffix
+            if (productPurchases.Count == 0 && productId.Contains("."))
+            {
+                var suffix = productId.Split('.').LastOrDefault(); // e.g. credits_100
+                productPurchases = customerInfo.Purchases
+                    .Where(p => !string.IsNullOrEmpty(p.TransactionId) && (p.ProductId == productId || p.ProductId?.EndsWith(suffix ?? "", StringComparison.OrdinalIgnoreCase) == true))
+                    .OrderByDescending(p => p.PurchasedAtMs ?? 0)
+                    .ToList();
+            }
+
             if (productPurchases.Count == 0)
             {
-                _logger.LogWarning("[RevenueCat API] No purchases found for productId: {ProductId}, app_user_id: {AppUserId}", productId, appUserId);
+                var seenIds = string.Join(", ", customerInfo.Purchases.Select(p => p.ProductId ?? "(null)"));
+                _logger.LogWarning("[RevenueCat API] No purchases found for productId: {ProductId}, app_user_id: {AppUserId}. RevenueCat purchase keys: {Keys}", productId, appUserId, seenIds);
                 return (false, null);
             }
 
-            // If transactionId provided, verify it exists and matches product
             if (!string.IsNullOrEmpty(transactionId))
             {
-                var matchingPurchase = productPurchases.FirstOrDefault(p => p.TransactionId == transactionId);
-                if (matchingPurchase != null)
+                var matching = productPurchases.FirstOrDefault(p => p.TransactionId == transactionId);
+                if (matching != null)
                 {
-                    _logger.LogInformation("[RevenueCat API] Transaction verified. TransactionId: {TransactionId}, ProductId: {ProductId}",
-                        transactionId, productId);
+                    _logger.LogInformation("[RevenueCat API] Transaction verified. TransactionId: {TransactionId}, ProductId: {ProductId}", transactionId, productId);
                     return (true, transactionId);
                 }
                 _logger.LogWarning("[RevenueCat API] Transaction not found. TransactionId: {TransactionId}, ProductId: {ProductId}", transactionId, productId);
                 return (false, null);
             }
 
-            // No transactionId: use latest purchase for this product (client may not have transaction ID)
+            // No transactionId: use latest purchase for this product
             var latestPurchase = productPurchases.First();
             var resolvedId = latestPurchase.TransactionId;
             _logger.LogInformation("[RevenueCat API] No transactionId provided. Using latest purchase. ResolvedTransactionId: {ResolvedId}, ProductId: {ProductId}, PurchasedAt: {PurchasedAt}",
