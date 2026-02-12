@@ -34,11 +34,22 @@ public class UserRepository : Repository<User>, IUserRepository
             }
         }
 
+        // First, try to find by Guid (User.Id)
         foreach (var id in idsToTry)
         {
             if (Guid.TryParse(id, out var userId))
             {
                 var user = await _dbSet.FirstOrDefaultAsync(u => u.Id == userId);
+                if (user != null) return user;
+            }
+        }
+
+        // If not found by Guid, try to find by RevenueCatCustomerId (for anonymous IDs like $RCAnonymousID:...)
+        foreach (var id in idsToTry)
+        {
+            if (!string.IsNullOrEmpty(id))
+            {
+                var user = await _dbSet.FirstOrDefaultAsync(u => u.RevenueCatCustomerId == id);
                 if (user != null) return user;
             }
         }

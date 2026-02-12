@@ -53,7 +53,17 @@ public class RevenueCatWebhookService : IRevenueCatWebhookService
         {
             _logger.LogWarning("[RevenueCat Webhook] User not found for app_user_id: {AppUserId}, original: {Original}, aliases: {Aliases}",
                 evt.AppUserId, evt.OriginalAppUserId, evt.Aliases != null ? string.Join(",", evt.Aliases) : "null");
-            return (false, false, "User not found. Ensure app_user_id is set to your User.Id (Guid) in RevenueCat SDK.");
+            return (false, false, "User not found. Ensure app_user_id is set to your User.Id (Guid) in RevenueCat SDK, or sync RevenueCat customer ID via POST /api/users/me/revenuecat-customer endpoint.");
+        }
+
+        // Update RevenueCatCustomerId if not set (for anonymous IDs or when linking customer ID)
+        // Use app_user_id first, then original_app_user_id, then first alias
+        var customerIdToSet = evt.AppUserId ?? evt.OriginalAppUserId ?? evt.Aliases?.FirstOrDefault();
+        if (!string.IsNullOrEmpty(customerIdToSet) && string.IsNullOrEmpty(user.RevenueCatCustomerId))
+        {
+            user.RevenueCatCustomerId = customerIdToSet;
+            _logger.LogInformation("[RevenueCat Webhook] Setting RevenueCatCustomerId to {CustomerId} for user {UserId}", 
+                customerIdToSet, user.Id);
         }
 
         var expirationAt = evt.ExpirationAtMs.HasValue && evt.ExpirationAtMs > 0
@@ -81,14 +91,14 @@ public class RevenueCatWebhookService : IRevenueCatWebhookService
                 break;
             case "SUBSCRIPTION_PAUSED":
                 user.SubscriptionStatus = "paused";
-                await _unitOfWork.Users.UpdateAsync(user);
+                // User entity is already tracked, changes will be saved when SaveChangesAsync is called
                 break;
             case "SUBSCRIPTION_EXTENDED":
             case "PRODUCT_CHANGE":
                 user.SubscriptionExpiresAt = expirationAt;
                 if (!string.IsNullOrEmpty(evt.NewProductId ?? evt.ProductId))
                     user.SubscriptionProductId = evt.NewProductId ?? evt.ProductId;
-                await _unitOfWork.Users.UpdateAsync(user);
+                // User entity is already tracked, changes will be saved when SaveChangesAsync is called
                 break;
             case "REFUND_REVERSED":
                 if (!string.IsNullOrEmpty(evt.ProductId))
@@ -96,8 +106,19 @@ public class RevenueCatWebhookService : IRevenueCatWebhookService
                     var refundPackage = (await _unitOfWork.CreditPackages.FindAsync(p => p.RevenueCatProductId == evt.ProductId)).FirstOrDefault();
                     if (refundPackage != null)
                     {
+                        _logger.LogInformation("[RevenueCat Webhook] REFUND_REVERSED: Adding {Credits} credits to user {UserId} for product {ProductId}", 
+                            refundPackage.Credits, user.Id, evt.ProductId);
                         await AddCreditsAsync(user, refundPackage.Credits, evt.TransactionId ?? evt.Id, cancellationToken);
                     }
+                    else
+                    {
+                        _logger.LogWarning("[RevenueCat Webhook] REFUND_REVERSED: Package not found for product {ProductId}. User {UserId} will not receive credits.", 
+                            evt.ProductId, user.Id);
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("[RevenueCat Webhook] REFUND_REVERSED: ProductId is empty. User {UserId} will not receive credits.", user.Id);
                 }
                 break;
             case "TEST":
@@ -152,21 +173,34 @@ public class RevenueCatWebhookService : IRevenueCatWebhookService
             if (package != null)
             {
                 creditsToAdd = package.Credits;
+                _logger.LogInformation("[RevenueCat Webhook] Adding {Credits} credits to user {UserId} for product {ProductId}", 
+                    creditsToAdd, user.Id, evt.ProductId);
                 await AddCreditsAsync(user, creditsToAdd, evt.TransactionId ?? evt.Id, cancellationToken);
             }
+            else
+            {
+                _logger.LogWarning("[RevenueCat Webhook] Package not found for product {ProductId}. User {UserId} will not receive credits.", 
+                    evt.ProductId, user.Id);
+            }
+        }
+        else
+        {
+            _logger.LogWarning("[RevenueCat Webhook] ProductId is empty for purchase event. User {UserId} will not receive credits.", user.Id);
         }
 
         user.SubscriptionStatus = "active";
         user.SubscriptionProductId = evt.ProductId;
         user.SubscriptionExpiresAt = expirationAt;
 
-        await _unitOfWork.Users.UpdateAsync(user);
+        // User entity is already tracked, no need to call UpdateAsync again
+        // The changes will be saved when SaveChangesAsync is called
     }
 
     private async Task HandleCancellationAsync(User user, CancellationToken cancellationToken)
     {
         user.SubscriptionStatus = "cancelled";
-        await _unitOfWork.Users.UpdateAsync(user);
+        _logger.LogInformation("[RevenueCat Webhook] Subscription cancelled for user {UserId}", user.Id);
+        // User entity is already tracked, changes will be saved when SaveChangesAsync is called
     }
 
     private async Task HandleUncancellationAsync(User user, RevenueCatWebhookEventPayload evt, DateTime? expirationAt, CancellationToken cancellationToken)
@@ -175,19 +209,27 @@ public class RevenueCatWebhookService : IRevenueCatWebhookService
         user.SubscriptionExpiresAt = expirationAt;
         if (!string.IsNullOrEmpty(evt.ProductId))
             user.SubscriptionProductId = evt.ProductId;
-        await _unitOfWork.Users.UpdateAsync(user);
+        _logger.LogInformation("[RevenueCat Webhook] Subscription uncancelled for user {UserId}", user.Id);
+        // User entity is already tracked, changes will be saved when SaveChangesAsync is called
     }
 
     private async Task HandleExpirationAsync(User user, CancellationToken cancellationToken)
     {
         user.SubscriptionStatus = "expired";
-        await _unitOfWork.Users.UpdateAsync(user);
+        _logger.LogInformation("[RevenueCat Webhook] Subscription expired for user {UserId}", user.Id);
+        // User entity is already tracked, changes will be saved when SaveChangesAsync is called
     }
 
     private async Task AddCreditsAsync(User user, int credits, string transactionId, CancellationToken cancellationToken)
     {
+        var oldCredits = user.Credits;
         user.Credits += credits;
-        await _unitOfWork.Users.UpdateAsync(user);
+        
+        _logger.LogInformation("[RevenueCat Webhook] User {UserId} credits: {OldCredits} -> {NewCredits} (added {Credits})", 
+            user.Id, oldCredits, user.Credits, credits);
+
+        // User entity is already tracked by EF Core from GetByRevenueCatAppUserIdsAsync
+        // No need to call UpdateAsync - changes will be saved when SaveChangesAsync is called
 
         var transaction = new CreditTransaction
         {
