@@ -104,7 +104,8 @@ public class CreditsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { error = "Internal server error", details = ex.Message });
+            var inner = ex.InnerException != null ? $" | Inner: {ex.InnerException.Message}" : "";
+            return StatusCode(500, new { error = $"500: {ex.Message}{inner}", stackTrace = ex.StackTrace?.Substring(0, Math.Min(ex.StackTrace.Length, 500)) });
         }
     }
 
