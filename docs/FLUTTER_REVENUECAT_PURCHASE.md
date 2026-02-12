@@ -18,6 +18,8 @@ User taps "Buy Credits"
   → Flutter UI'ı günceller
 ```
 
+**ÖNEMLİ:** RevenueCat ile satın alma için **mutlaka** `POST /api/credits/purchase-revenuecat` kullanın; body'de **`productId`** (RevenueCat product ID, örn. `com.erdiacar.mentorx.credits_100`) gönderin. Eski endpoint `POST /api/credits/purchase` ve **`packageId`** (backend Guid) ile karıştırmayın.
+
 ---
 
 ## 1. RevenueCat SDK Setup
@@ -212,8 +214,9 @@ class CreditPurchaseService {
     
     final url = Uri.parse('$backendBaseUrl/api/credits/purchase-revenuecat');
     
+    // transactionId opsiyonel: boş/null gönderirsen backend RevenueCat'ten en son satın almayı bulur
     final requestBody = {
-      'transactionId': transactionId ?? '', // Eğer null ise boş string gönder
+      'transactionId': transactionId ?? '',
       'productId': productId,
       // packageId optional, backend productId'den bulur
     };

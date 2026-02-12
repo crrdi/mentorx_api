@@ -116,42 +116,59 @@ public class RevenueCatApiService : IRevenueCatApiService
         }
     }
 
-    public async Task<bool> VerifyTransactionAsync(string appUserId, string transactionId, string productId, CancellationToken cancellationToken = default)
+    public async Task<(bool Verified, string? ResolvedTransactionId)> VerifyTransactionAsync(string appUserId, string? transactionId, string productId, CancellationToken cancellationToken = default)
     {
         try
         {
             _logger.LogInformation("[RevenueCat API] Verifying transaction. AppUserId: {AppUserId}, TransactionId: {TransactionId}, ProductId: {ProductId}",
-                appUserId, transactionId, productId);
+                appUserId, transactionId ?? "(null)", productId);
 
             var customerInfo = await GetCustomerInfoAsync(appUserId, cancellationToken);
             
             if (customerInfo?.Purchases == null)
             {
                 _logger.LogWarning("[RevenueCat API] No purchases found for app_user_id: {AppUserId}", appUserId);
-                return false;
+                return (false, null);
             }
 
-            // Check if transaction exists and matches product ID
-            var matchingPurchase = customerInfo.Purchases.FirstOrDefault(p => 
-                p.TransactionId == transactionId && 
-                p.ProductId == productId);
+            // Purchases for this product (order by most recent)
+            var productPurchases = customerInfo.Purchases
+                .Where(p => p.ProductId == productId && !string.IsNullOrEmpty(p.TransactionId))
+                .OrderByDescending(p => p.PurchasedAtMs ?? 0)
+                .ToList();
 
-            if (matchingPurchase != null)
+            if (productPurchases.Count == 0)
             {
-                _logger.LogInformation("[RevenueCat API] Transaction verified. TransactionId: {TransactionId}, ProductId: {ProductId}, PurchasedAt: {PurchasedAt}",
-                    transactionId, productId, matchingPurchase.PurchasedAtMs);
-                return true;
+                _logger.LogWarning("[RevenueCat API] No purchases found for productId: {ProductId}, app_user_id: {AppUserId}", productId, appUserId);
+                return (false, null);
             }
 
-            _logger.LogWarning("[RevenueCat API] Transaction not found or product mismatch. TransactionId: {TransactionId}, ProductId: {ProductId}",
-                transactionId, productId);
-            return false;
+            // If transactionId provided, verify it exists and matches product
+            if (!string.IsNullOrEmpty(transactionId))
+            {
+                var matchingPurchase = productPurchases.FirstOrDefault(p => p.TransactionId == transactionId);
+                if (matchingPurchase != null)
+                {
+                    _logger.LogInformation("[RevenueCat API] Transaction verified. TransactionId: {TransactionId}, ProductId: {ProductId}",
+                        transactionId, productId);
+                    return (true, transactionId);
+                }
+                _logger.LogWarning("[RevenueCat API] Transaction not found. TransactionId: {TransactionId}, ProductId: {ProductId}", transactionId, productId);
+                return (false, null);
+            }
+
+            // No transactionId: use latest purchase for this product (client may not have transaction ID)
+            var latestPurchase = productPurchases.First();
+            var resolvedId = latestPurchase.TransactionId;
+            _logger.LogInformation("[RevenueCat API] No transactionId provided. Using latest purchase. ResolvedTransactionId: {ResolvedId}, ProductId: {ProductId}, PurchasedAt: {PurchasedAt}",
+                resolvedId, productId, latestPurchase.PurchasedAtMs);
+            return (true, resolvedId);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[RevenueCat API] Error verifying transaction. AppUserId: {AppUserId}, TransactionId: {TransactionId}",
-                appUserId, transactionId);
-            return false;
+                appUserId, transactionId ?? "(null)");
+            return (false, null);
         }
     }
 }

@@ -80,11 +80,6 @@ public class CreditsController : ControllerBase
             return Unauthorized(new { error = "Unauthorized" });
         }
 
-        if (string.IsNullOrEmpty(request.TransactionId))
-        {
-            return BadRequest(new { error = "TransactionId is required" });
-        }
-
         if (string.IsNullOrEmpty(request.ProductId))
         {
             return BadRequest(new { error = "ProductId is required" });

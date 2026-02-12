@@ -42,9 +42,14 @@ public class CreditService : ICreditService
 
     public async Task<PurchaseCreditsResponse> PurchaseCreditsAsync(Guid userId, PurchaseCreditsRequest request)
     {
+        // PackageId must be the backend package Guid. If client sends RevenueCat productId (e.g. com.xxx.credits_100), guide them to the correct endpoint.
+        if (string.IsNullOrWhiteSpace(request.PackageId))
+        {
+            throw new ArgumentException("PackageId is required. For in-app purchase use POST /api/credits/purchase-revenuecat with body: { \"productId\": \"your_revenuecat_product_id\" }.");
+        }
         if (!Guid.TryParse(request.PackageId, out var packageId))
         {
-            throw new KeyNotFoundException("Invalid package ID");
+            throw new ArgumentException("PackageId must be a Guid (from GET /api/credits/packages). You sent a RevenueCat product ID – use POST /api/credits/purchase-revenuecat with \"productId\" instead.");
         }
 
         var package = await _unitOfWork.CreditPackages.GetByIdAsync(packageId);
@@ -95,7 +100,7 @@ public class CreditService : ICreditService
     public async Task<VerifyRevenueCatPurchaseResponse> PurchaseCreditsFromRevenueCatAsync(Guid userId, VerifyRevenueCatPurchaseRequest request)
     {
         _logger.LogInformation("[CreditService] PurchaseCreditsFromRevenueCatAsync called. UserId: {UserId}, TransactionId: {TransactionId}, ProductId: {ProductId}",
-            userId, request.TransactionId, request.ProductId);
+            userId, request.TransactionId ?? "(null)", request.ProductId);
 
         // Get user
         var user = await _unitOfWork.Users.GetByIdAsync(userId);
@@ -110,14 +115,36 @@ public class CreditService : ICreditService
             };
         }
 
-        // Idempotency check: Check if transaction already processed
+        // Verify transaction with RevenueCat API (transactionId optional; when empty, API resolves latest purchase for productId)
+        var appUserId = user.Id.ToString();
+        var (isVerified, resolvedTransactionId) = await _revenueCatApiService.VerifyTransactionAsync(
+            appUserId,
+            string.IsNullOrEmpty(request.TransactionId) ? null : request.TransactionId,
+            request.ProductId);
+
+        if (!isVerified || string.IsNullOrEmpty(resolvedTransactionId))
+        {
+            _logger.LogWarning("[CreditService] Transaction verification failed. ProductId: {ProductId}, UserId: {UserId}",
+                request.ProductId, userId);
+            return new VerifyRevenueCatPurchaseResponse
+            {
+                Success = false,
+                Verified = false,
+                Error = "Transaction verification failed. No valid purchase found in RevenueCat for this product."
+            };
+        }
+
+        _logger.LogInformation("[CreditService] Transaction verified successfully. ResolvedTransactionId: {TransactionId}, ProductId: {ProductId}",
+            resolvedTransactionId, request.ProductId);
+
+        // Idempotency check: Check if this transaction already processed
         var existingTransaction = (await _unitOfWork.CreditTransactions.FindAsync(
-            t => t.TransactionId == request.TransactionId && t.UserId == userId)).FirstOrDefault();
+            t => t.TransactionId == resolvedTransactionId && t.UserId == userId)).FirstOrDefault();
 
         if (existingTransaction != null)
         {
             _logger.LogInformation("[CreditService] Transaction already processed. TransactionId: {TransactionId}, UserId: {UserId}, CreditsAdded: {Credits}",
-                request.TransactionId, userId, existingTransaction.Amount);
+                resolvedTransactionId, userId, existingTransaction.Amount);
             return new VerifyRevenueCatPurchaseResponse
             {
                 Success = true,
@@ -127,28 +154,6 @@ public class CreditService : ICreditService
                 Error = "Transaction already processed"
             };
         }
-
-        // Verify transaction with RevenueCat API
-        var appUserId = user.Id.ToString(); // Use User.Id as app_user_id
-        var isVerified = await _revenueCatApiService.VerifyTransactionAsync(
-            appUserId, 
-            request.TransactionId, 
-            request.ProductId);
-
-        if (!isVerified)
-        {
-            _logger.LogWarning("[CreditService] Transaction verification failed. TransactionId: {TransactionId}, ProductId: {ProductId}, UserId: {UserId}",
-                request.TransactionId, request.ProductId, userId);
-            return new VerifyRevenueCatPurchaseResponse
-            {
-                Success = false,
-                Verified = false,
-                Error = "Transaction verification failed. Transaction not found in RevenueCat or product mismatch."
-            };
-        }
-
-        _logger.LogInformation("[CreditService] Transaction verified successfully. TransactionId: {TransactionId}, ProductId: {ProductId}",
-            request.TransactionId, request.ProductId);
 
         // Find package by RevenueCat product ID
         var package = (await _unitOfWork.CreditPackages.FindAsync(
@@ -180,7 +185,7 @@ public class CreditService : ICreditService
         user.Credits += creditsToAdd;
         await _unitOfWork.Users.UpdateAsync(user);
 
-        // Create transaction record with transaction ID for idempotency
+        // Create transaction record with resolved transaction ID for idempotency
         var transaction = new Domain.Entities.CreditTransaction
         {
             Id = Guid.NewGuid(),
@@ -188,7 +193,7 @@ public class CreditService : ICreditService
             Type = CreditTransactionType.Purchase,
             Amount = creditsToAdd,
             BalanceAfter = user.Credits,
-            TransactionId = request.TransactionId,
+            TransactionId = resolvedTransactionId,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
