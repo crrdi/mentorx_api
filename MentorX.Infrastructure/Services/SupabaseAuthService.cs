@@ -164,7 +164,6 @@ public class SupabaseAuthService : ISupabaseAuthService
             
             // Supabase'in döndüğü hata mesajını daha anlaşılır hale getir
             var errorMessage = ex.Message;
-            var errorCode = "GOOGLE_AUTH_ERROR";
             
             if (!string.IsNullOrEmpty(ex.Message))
             {
@@ -176,19 +175,16 @@ public class SupabaseAuthService : ISupabaseAuthService
                     if (messageLower.Contains("invalid") || messageLower.Contains("token") || messageLower.Contains("expired"))
                     {
                         errorMessage = "Google sign-in failed: Invalid or expired token. Please try signing in again.";
-                        errorCode = "GOOGLE_TOKEN_INVALID";
                         _logger.LogWarning("Token validation failed. This usually means: 1) Token expired, 2) Token format is incorrect, 3) Token was not issued by Google");
                     }
                     else if (messageLower.Contains("provider") || messageLower.Contains("oauth") || messageLower.Contains("configuration"))
                     {
                         errorMessage = "Google sign-in failed: OAuth configuration is missing or incorrect. Please contact system administrator.";
-                        errorCode = "GOOGLE_OAUTH_CONFIG_ERROR";
                         _logger.LogWarning("OAuth configuration error. Check Supabase Dashboard > Authentication > Providers > Google settings");
                     }
                     else if (ex.StatusCode == 401 || ex.StatusCode == 403)
                     {
                         errorMessage = "Google sign-in failed: Authentication error. Please try again.";
-                        errorCode = "GOOGLE_AUTH_UNAUTHORIZED";
                         _logger.LogWarning("Unauthorized error (401/403). Check if Google OAuth is properly configured in Supabase");
                     }
                     else
