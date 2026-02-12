@@ -31,7 +31,7 @@ public class RevenueCatApiService : IRevenueCatApiService
             _logger.LogInformation("[RevenueCat API] Fetching customer info for app_user_id: {AppUserId}, HasAuthHeader: {HasAuth}, BaseAddress: {BaseAddress}",
                 appUserId, hasAuth, _httpClient.BaseAddress);
 
-            var response = await _httpClient.GetAsync($"/subscribers/{Uri.EscapeDataString(appUserId)}", cancellationToken);
+            var response = await _httpClient.GetAsync($"subscribers/{Uri.EscapeDataString(appUserId)}", cancellationToken);
 
             if (!response.IsSuccessStatusCode)
             {

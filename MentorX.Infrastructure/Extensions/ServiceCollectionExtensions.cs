@@ -30,7 +30,7 @@ public static class ServiceCollectionExtensions
         // RevenueCat REST API service
         services.AddHttpClient<IRevenueCatApiService, RevenueCatApiService>(client =>
         {
-            client.BaseAddress = new Uri("https://api.revenuecat.com/v1");
+            client.BaseAddress = new Uri("https://api.revenuecat.com/v1/");
             client.DefaultRequestHeaders.Add("X-Platform", "api");
             
             // Set API key from configuration
