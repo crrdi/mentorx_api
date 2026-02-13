@@ -209,6 +209,73 @@ public class SupabaseAuthService : ISupabaseAuthService
         }
     }
 
+    public async Task<SupabaseAuthResult> SignInWithEmailAsync(string email, string password)
+    {
+        try
+        {
+            _logger.LogInformation("Attempting email sign in for {Email}", email);
+
+            Supabase.Gotrue.Session? session = null;
+
+            try
+            {
+                session = await _supabaseService.Client.Auth.SignIn(email, password);
+            }
+            catch (Exception signInEx)
+            {
+                // Kullanıcı yoksa oluştur ve tekrar dene
+                _logger.LogWarning("Sign in failed, attempting sign up for {Email}: {Message}", email, signInEx.Message);
+                
+                session = await _supabaseService.Client.Auth.SignUp(email, password);
+
+                if (session == null)
+                {
+                    // SignUp başarılı ama session null ise (email confirm gerekiyorsa), tekrar sign in dene
+                    session = await _supabaseService.Client.Auth.SignIn(email, password);
+                }
+            }
+
+            if (session == null)
+            {
+                _logger.LogError("Could not obtain session for email {Email}", email);
+                throw new UnauthorizedAccessException("Login failed");
+            }
+
+            _logger.LogInformation("Email sign in successful for {Email}", email);
+
+            SupabaseUser? userModel = null;
+            var currentUser = _supabaseService.Client.Auth.CurrentUser;
+            if (currentUser != null)
+            {
+                userModel = new SupabaseUser
+                {
+                    Id = currentUser.Id ?? string.Empty,
+                    Email = currentUser.Email
+                };
+            }
+
+            return new SupabaseAuthResult
+            {
+                User = userModel,
+                Session = new SupabaseSession
+                {
+                    AccessToken = session.AccessToken ?? string.Empty,
+                    RefreshToken = session.RefreshToken ?? string.Empty,
+                    ExpiresIn = session.ExpiresIn > 0 ? (int)session.ExpiresIn : 3600
+                }
+            };
+        }
+        catch (UnauthorizedAccessException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Email sign in failed for {Email}: {Message}", email, ex.Message);
+            throw new UnauthorizedAccessException("Login failed", ex);
+        }
+    }
+
     public async Task<SupabaseUser?> GetUserAsync(string accessToken)
     {
         try

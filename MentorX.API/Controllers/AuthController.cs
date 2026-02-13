@@ -63,6 +63,28 @@ public class AuthController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Test email login - sadece hardcoded credentials çalışır
+    /// </summary>
+    [HttpPost("login")]
+    public async Task<IActionResult> EmailLogin([FromBody] LoginRequest request)
+    {
+        try
+        {
+            var result = await _authService.EmailLoginAsync(request);
+            return Ok(result);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Unauthorized(new { error = "Invalid email or password", code = "LOGIN_FAILED" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Email login failed");
+            return BadRequest(new { error = "Login failed", code = "LOGIN_ERROR" });
+        }
+    }
+
     [HttpPost("apple")]
     public async Task<IActionResult> AppleAuth([FromBody] AppleAuthRequest request)
     {

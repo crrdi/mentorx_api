@@ -178,6 +178,47 @@ public class AuthService : IAuthService
         };
     }
 
+    public async Task<AuthResponse> EmailLoginAsync(LoginRequest request)
+    {
+        // Hardcoded test credentials - sadece bu email/şifre çalışır
+        if (request.Email != "erdiacar@gmail.com" || request.Password != "Sandbox123456")
+        {
+            throw new UnauthorizedAccessException("Invalid email or password");
+        }
+
+        // DB'den kullanıcıyı email ile bul
+        var user = await _unitOfWork.Users.GetByEmailAsync(request.Email);
+        if (user == null)
+        {
+            throw new UnauthorizedAccessException("User not found");
+        }
+
+        // Basit JWT token oluştur (auth handler sadece payload decode eder, imza kontrol etmez)
+        var header = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("{\"alg\":\"HS256\",\"typ\":\"JWT\"}"));
+        var exp = DateTimeOffset.UtcNow.AddHours(24).ToUnixTimeSeconds();
+        var iat = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var payload = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(
+            $"{{\"sub\":\"{user.Id}\",\"email\":\"{user.Email}\",\"iat\":{iat},\"exp\":{exp}}}"));
+        var token = $"{header}.{payload}.test-signature";
+
+        return new AuthResponse
+        {
+            User = _mapper.Map<UserResponse>(user),
+            Session = new SessionResponse
+            {
+                AccessToken = token,
+                RefreshToken = token,
+                ExpiresIn = 86400,
+                TokenType = "bearer",
+                User = new SessionUserResponse
+                {
+                    Id = user.Id,
+                    Email = user.Email
+                }
+            }
+        };
+    }
+
     private string? ExtractNameFromToken(string idToken)
     {
         try

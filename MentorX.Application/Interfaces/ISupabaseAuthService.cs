@@ -3,6 +3,7 @@ namespace MentorX.Application.Interfaces;
 public interface ISupabaseAuthService
 {
     Task<SupabaseAuthResult> SignInWithIdTokenAsync(string provider, string idToken, string? accessToken = null);
+    Task<SupabaseAuthResult> SignInWithEmailAsync(string email, string password);
     Task<SupabaseUser?> GetUserAsync(string accessToken);
 }
 
