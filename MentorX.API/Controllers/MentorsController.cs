@@ -11,10 +11,12 @@ namespace MentorX.API.Controllers;
 public class MentorsController : ControllerBase
 {
     private readonly IMentorService _mentorService;
+    private readonly ILogger<MentorsController> _logger;
 
-    public MentorsController(IMentorService mentorService)
+    public MentorsController(IMentorService mentorService, ILogger<MentorsController> logger)
     {
         _mentorService = mentorService;
+        _logger = logger;
     }
 
     [HttpGet]
@@ -66,9 +68,18 @@ public class MentorsController : ControllerBase
             var result = await _mentorService.CreateMentorAsync(userId.Value, request);
             return CreatedAtAction(nameof(GetMentorById), new { id = result.Id }, result);
         }
-        catch (Exception ex)
+        catch (ArgumentException ex)
         {
             return BadRequest(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to create mentor for user {UserId}", userId);
+            return StatusCode(500, new { error = "Failed to create mentor. Please check your input and try again." });
         }
     }
 
@@ -95,9 +106,14 @@ public class MentorsController : ControllerBase
         {
             return StatusCode(403, new { error = ex.Message });
         }
-        catch (Exception ex)
+        catch (ArgumentException ex)
         {
             return BadRequest(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update mentor {MentorId} for user {UserId}", id, userId);
+            return StatusCode(500, new { error = "Failed to update mentor. Please try again." });
         }
     }
 
@@ -116,9 +132,14 @@ public class MentorsController : ControllerBase
             var result = await _mentorService.FollowMentorAsync(id, userId.Value);
             return Ok(result);
         }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
         catch (Exception ex)
         {
-            return BadRequest(new { error = ex.Message });
+            _logger.LogError(ex, "Failed to follow mentor {MentorId} for user {UserId}", id, userId);
+            return StatusCode(500, new { error = "Failed to follow mentor. Please try again." });
         }
     }
 
@@ -137,9 +158,14 @@ public class MentorsController : ControllerBase
             var result = await _mentorService.UnfollowMentorAsync(id, userId.Value);
             return Ok(result);
         }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
         catch (Exception ex)
         {
-            return BadRequest(new { error = ex.Message });
+            _logger.LogError(ex, "Failed to unfollow mentor {MentorId} for user {UserId}", id, userId);
+            return StatusCode(500, new { error = "Failed to unfollow mentor. Please try again." });
         }
     }
 
@@ -151,9 +177,14 @@ public class MentorsController : ControllerBase
             var result = await _mentorService.GetMentorRepliesAsync(id);
             return Ok(result);
         }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
         catch (Exception ex)
         {
-            return BadRequest(new { error = ex.Message });
+            _logger.LogError(ex, "Failed to fetch replies for mentor {MentorId}", id);
+            return StatusCode(500, new { error = "Failed to fetch mentor replies. Please try again." });
         }
     }
 

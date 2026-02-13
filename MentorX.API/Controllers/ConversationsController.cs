@@ -12,10 +12,12 @@ namespace MentorX.API.Controllers;
 public class ConversationsController : ControllerBase
 {
     private readonly IConversationService _conversationService;
+    private readonly ILogger<ConversationsController> _logger;
 
-    public ConversationsController(IConversationService conversationService)
+    public ConversationsController(IConversationService conversationService, ILogger<ConversationsController> logger)
     {
         _conversationService = conversationService;
+        _logger = logger;
     }
 
     [HttpGet]
@@ -43,7 +45,8 @@ public class ConversationsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = ex.Message });
+            _logger.LogError(ex, "Failed to fetch conversations");
+            return StatusCode(500, new { error = "Failed to fetch conversations. Please try again." });
         }
     }
 
@@ -65,9 +68,14 @@ public class ConversationsController : ControllerBase
         {
             return NotFound(new { error = ex.Message });
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
             return BadRequest(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to create conversation");
+            return StatusCode(500, new { error = "Failed to create conversation. Please try again." });
         }
     }
 
@@ -101,7 +109,8 @@ public class ConversationsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = ex.Message });
+            _logger.LogError(ex, "Failed to fetch messages for conversation {ConversationId}", id);
+            return StatusCode(500, new { error = "Failed to fetch messages. Please try again." });
         }
     }
 
@@ -123,9 +132,18 @@ public class ConversationsController : ControllerBase
         {
             return StatusCode(403, new { error = "Conversation not found or access denied" });
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
             return BadRequest(new { error = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send message in conversation {ConversationId}", id);
+            return StatusCode(500, new { error = "Failed to send message. Please try again." });
         }
     }
 

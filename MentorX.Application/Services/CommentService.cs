@@ -108,7 +108,7 @@ public class CommentService : ICommentService
             var mentorActor = await _unitOfWork.Actors.GetByMentorIdAsync(request.MentorId.Value);
             if (mentorActor == null)
             {
-                throw new Exception("Mentor actor not found");
+                throw new InvalidOperationException("Mentor actor not found. The mentor may not have been properly initialized.");
             }
 
             authorActorId = mentorActor.Id;
@@ -117,7 +117,7 @@ public class CommentService : ICommentService
             var mentor = await _unitOfWork.Mentors.GetByIdAsync(request.MentorId.Value);
             if (mentor == null)
             {
-                throw new Exception("Mentor not found");
+                throw new KeyNotFoundException("Mentor not found");
             }
 
             var mentorHandle = $"mentor_{mentor.Id.ToString().Substring(0, 8)}";
@@ -145,7 +145,7 @@ public class CommentService : ICommentService
                     ex.Message);
 
                 // NO FALLBACK - Throw error instead of placeholder text
-                throw new InvalidOperationException($"Failed to generate comment content: {ex.Message}", ex);
+                throw new InvalidOperationException("Failed to generate comment. The AI service encountered an error. Please try again.", ex);
             }
         }
         else

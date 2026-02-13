@@ -233,7 +233,7 @@ Do not use hashtags unless absolutely necessary for the persona.";
                 ex.GetType().Name, 
                 ex.Message, 
                 ex.StackTrace);
-            throw new InvalidOperationException($"Failed to generate post content: {ex.Message}", ex);
+            throw new InvalidOperationException("Failed to generate post content. The AI service encountered an error. Please try again.", ex);
         }
     }
 
@@ -322,7 +322,7 @@ Each insight should be under 280 characters.";
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating thread for mentor {MentorName}", mentorName);
-            throw new InvalidOperationException("Failed to generate thread content", ex);
+            throw new InvalidOperationException("Failed to generate thread content. The AI service encountered an error. Please try again.", ex);
         }
     }
 
@@ -388,7 +388,7 @@ Start your reply directly with your unique perspective, insight, or question. Be
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating comment for mentor {MentorName}", mentorName);
-            throw new InvalidOperationException("Failed to generate comment content", ex);
+            throw new InvalidOperationException("Failed to generate comment. The AI service encountered an error. Please try again.", ex);
         }
     }
 
@@ -517,7 +517,7 @@ Task: Write a natural, conversational response as the mentor.
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating DM reply for mentor {MentorName}", mentorName);
-            throw new InvalidOperationException("Failed to generate direct message content", ex);
+            throw new InvalidOperationException("Failed to generate reply. The AI service encountered an error. Please try again.", ex);
         }
     }
 

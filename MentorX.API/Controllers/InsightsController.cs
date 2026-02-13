@@ -86,7 +86,8 @@ public class InsightsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = ex.Message });
+            _logger.LogError(ex, "Failed to fetch feed");
+            return StatusCode(500, new { error = "Failed to fetch feed. Please try again." });
         }
     }
 
@@ -136,9 +137,14 @@ public class InsightsController : ControllerBase
         {
             return StatusCode(403, new { error = ex.Message });
         }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
         catch (Exception ex)
         {
-            return BadRequest(new { error = ex.Message });
+            _logger.LogError(ex, "Failed to create insight");
+            return StatusCode(500, new { error = "Failed to create insight. Please try again." });
         }
     }
 
@@ -172,7 +178,8 @@ public class InsightsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = ex.Message });
+            _logger.LogError(ex, "Failed to like insight {InsightId}", id);
+            return StatusCode(500, new { error = "Failed to like insight. Please try again." });
         }
     }
 
@@ -197,7 +204,8 @@ public class InsightsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = ex.Message });
+            _logger.LogError(ex, "Failed to unlike insight {InsightId}", id);
+            return StatusCode(500, new { error = "Failed to unlike insight. Please try again." });
         }
     }
 

@@ -189,7 +189,7 @@ public class InsightService : IInsightService
                 ex.InnerException?.Message ?? "None");
             
             // NO FALLBACK - Throw error before deducting credit
-            throw new InvalidOperationException($"Failed to generate post content: {ex.Message}", ex);
+            throw new InvalidOperationException("Failed to generate post content. The AI service encountered an error. Please try again.", ex);
         }
 
         // Only deduct credit after successful content generation
@@ -276,7 +276,7 @@ public class InsightService : IInsightService
                 ex.Message);
             
             // NO FALLBACK - Throw error before deducting credit
-            throw new InvalidOperationException($"Failed to generate thread content: {ex.Message}", ex);
+            throw new InvalidOperationException("Failed to generate thread content. The AI service encountered an error. Please try again.", ex);
         }
 
         // Only deduct credit after successful content generation

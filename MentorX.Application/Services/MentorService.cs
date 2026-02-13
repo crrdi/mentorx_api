@@ -143,16 +143,6 @@ public class MentorService : IMentorService
 
         // Actor kaydı trigger ile otomatik oluşturulacak (02-triggers.sql)
 
-        // Create Automation
-        var automation = new Domain.Entities.MentorAutomation
-        {
-            MentorId = mentor.Id,
-            Enabled = false,
-            Cadence = "daily",
-            Timezone = "UTC",
-            UpdatedAt = DateTime.UtcNow
-        };
-
         await _unitOfWork.SaveChangesAsync();
 
         // Generate and upload avatar asynchronously - do not block mentor creation on failure

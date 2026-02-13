@@ -11,10 +11,12 @@ namespace MentorX.API.Controllers;
 public class CreditsController : ControllerBase
 {
     private readonly ICreditService _creditService;
+    private readonly ILogger<CreditsController> _logger;
 
-    public CreditsController(ICreditService creditService)
+    public CreditsController(ICreditService creditService, ILogger<CreditsController> logger)
     {
         _creditService = creditService;
+        _logger = logger;
     }
 
     [HttpGet("packages")]
@@ -64,9 +66,14 @@ public class CreditsController : ControllerBase
         {
             return NotFound(new { error = ex.Message });
         }
-        catch (Exception ex)
+        catch (ArgumentException ex)
         {
             return BadRequest(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to purchase credits for user {UserId}", userId);
+            return StatusCode(500, new { error = "Failed to purchase credits. Please try again." });
         }
     }
 
@@ -104,8 +111,8 @@ public class CreditsController : ControllerBase
         }
         catch (Exception ex)
         {
-            var inner = ex.InnerException != null ? $" | Inner: {ex.InnerException.Message}" : "";
-            return StatusCode(500, new { error = $"500: {ex.Message}{inner}", stackTrace = ex.StackTrace?.Substring(0, Math.Min(ex.StackTrace.Length, 500)) });
+            _logger.LogError(ex, "Failed to process RevenueCat purchase for user {UserId}", userId);
+            return StatusCode(500, new { error = "Failed to process purchase. Please try again or contact support." });
         }
     }
 

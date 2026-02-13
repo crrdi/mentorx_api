@@ -8,10 +8,12 @@ namespace MentorX.API.Controllers;
 public class TagsController : ControllerBase
 {
     private readonly ITagService _tagService;
+    private readonly ILogger<TagsController> _logger;
 
-    public TagsController(ITagService tagService)
+    public TagsController(ITagService tagService, ILogger<TagsController> logger)
     {
         _tagService = tagService;
+        _logger = logger;
     }
 
     [HttpGet("popular")]
@@ -27,7 +29,8 @@ public class TagsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = ex.Message });
+            _logger.LogError(ex, "Failed to fetch popular tags");
+            return StatusCode(500, new { error = "Failed to fetch popular tags. Please try again." });
         }
     }
 
@@ -51,7 +54,8 @@ public class TagsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = ex.Message });
+            _logger.LogError(ex, "Failed to search tags");
+            return StatusCode(500, new { error = "Failed to search tags. Please try again." });
         }
     }
 }

@@ -110,9 +110,8 @@ public class AuthController : ControllerBase
         }
         catch (Exception ex)
         {
-            var message = ex.InnerException?.Message ?? ex.Message;
-            _logger.LogError(ex, "Apple auth failed: {Message}", message);
-            return BadRequest(new { error = message });
+            _logger.LogError(ex, "Apple auth failed");
+            return BadRequest(new { error = "An error occurred while signing in with Apple. Please try again." });
         }
     }
 }

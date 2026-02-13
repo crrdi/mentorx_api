@@ -13,11 +13,13 @@ public class UsersController : ControllerBase
 {
     private readonly IUserService _userService;
     private readonly ISubscriptionService _subscriptionService;
+    private readonly ILogger<UsersController> _logger;
 
-    public UsersController(IUserService userService, ISubscriptionService subscriptionService)
+    public UsersController(IUserService userService, ISubscriptionService subscriptionService, ILogger<UsersController> logger)
     {
         _userService = userService;
         _subscriptionService = subscriptionService;
+        _logger = logger;
     }
 
     [HttpGet("me")]
@@ -64,7 +66,8 @@ public class UsersController : ControllerBase
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = ex.Message });
+            _logger.LogError(ex, "Failed to update user {UserId}", userId);
+            return StatusCode(500, new { error = "Failed to update profile. Please try again." });
         }
     }
 
@@ -100,7 +103,8 @@ public class UsersController : ControllerBase
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = ex.Message });
+            _logger.LogError(ex, "Failed to fetch created mentors for user {UserId}", userId);
+            return StatusCode(500, new { error = "Failed to fetch your mentors. Please try again." });
         }
     }
 
@@ -177,7 +181,8 @@ public class UsersController : ControllerBase
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = ex.Message });
+            _logger.LogError(ex, "Failed to fetch following mentors for user {UserId}", userId);
+            return StatusCode(500, new { error = "Failed to fetch followed mentors. Please try again." });
         }
     }
 

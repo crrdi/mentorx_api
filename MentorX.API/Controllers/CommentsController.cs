@@ -40,7 +40,8 @@ public class CommentsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = ex.Message });
+            _logger.LogError(ex, "Failed to fetch comments for insight {InsightId}", insightId);
+            return StatusCode(500, new { error = "Failed to fetch comments. Please try again." });
         }
     }
 
@@ -97,15 +98,20 @@ public class CommentsController : ControllerBase
             _logger.LogWarning("CreateComment: Forbidden - {ErrorMessage}", ex.Message);
             return StatusCode(403, new { error = ex.Message });
         }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "CreateComment: InvalidOperation - {ErrorMessage}", ex.Message);
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            _logger.LogWarning(ex, "CreateComment: ArgumentError - {ErrorMessage}", ex.Message);
+            return BadRequest(new { error = ex.Message });
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "CreateComment: BadRequest - {ErrorMessage}", ex.Message);
-            
-            // Log error response
-            var errorResponseJson = JsonSerializer.Serialize(new { error = ex.Message });
-            _logger.LogError("CreateComment Error Response (400 BadRequest): {ErrorResponseJson}", errorResponseJson);
-            
-            return BadRequest(new { error = ex.Message });
+            _logger.LogError(ex, "CreateComment: Unexpected error for insight {InsightId}", insightId);
+            return StatusCode(500, new { error = "Failed to create comment. Please try again." });
         }
     }
 

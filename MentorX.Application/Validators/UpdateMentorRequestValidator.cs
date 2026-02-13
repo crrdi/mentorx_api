@@ -3,9 +3,9 @@ using MentorX.Application.DTOs.Requests;
 
 namespace MentorX.Application.Validators;
 
-public class CreateMentorRequestValidator : AbstractValidator<CreateMentorRequest>
+public class UpdateMentorRequestValidator : AbstractValidator<UpdateMentorRequest>
 {
-    public CreateMentorRequestValidator()
+    public UpdateMentorRequestValidator()
     {
         RuleFor(x => x.Name)
             .NotEmpty().WithMessage("Name is required")
