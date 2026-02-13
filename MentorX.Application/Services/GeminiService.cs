@@ -535,16 +535,41 @@ Task: Write a natural, conversational response as the mentor.
                 ? string.Join(", ", expertiseTags.Select(t => t.StartsWith("#") ? t.Substring(1) : t).Take(10))
                 : "general topics";
 
-            var prompt = $@"Create a professional, friendly avatar/profile picture for an AI mentor named ""{sanitizedName}"".
-Expertise: {sanitizedBio}
-Topics: {tagsText}
+            // Use a hash of the mentor name to pick a consistent but varied style
+            var styleIndex = Math.Abs(sanitizedName.GetHashCode()) % 8;
+            var artStyle = styleIndex switch
+            {
+                0 => "modern flat vector illustration with bold geometric shapes and vibrant gradients",
+                1 => "warm watercolor portrait style with soft brush strokes and pastel tones",
+                2 => "sleek 3D rendered character with smooth lighting and subtle reflections",
+                3 => "minimalist line art portrait with a single accent color pop",
+                4 => "retro pop art style with halftone dots and bright contrasting colors",
+                5 => "elegant digital painting with rich textures and cinematic lighting",
+                6 => "isometric pixel-art inspired character with crisp edges and fun details",
+                _ => "clean modern illustration with soft shadows and a contemporary color palette"
+            };
 
-Style requirements:
-- Stylized illustration or abstract portrait (not photorealistic human face)
-- Professional, approachable, trustworthy appearance
-- Visual elements that subtly reflect the domain (e.g., tech/code aesthetics for developers, leadership symbols for business)
-- Clean background, suitable for circular crop
-- Square format, centered composition";
+            var prompt = $@"Generate a unique, eye-catching profile avatar for a mentor character.
+
+Character identity:
+- Name: ""{sanitizedName}""
+- Expertise: {sanitizedBio}
+- Topics: {tagsText}
+
+Art direction:
+- Style: {artStyle}
+- Create a friendly, charismatic human character (NOT alien, NOT robot, NOT abstract shape)
+- The character should look like a stylized but recognizable person — think Pixar/Disney-inspired or modern app mascot
+- Give the character a distinctive look: unique hairstyle, interesting outfit, or accessories that reflect their expertise
+- Expressive face with a warm, confident smile
+- Upper body portrait or head-and-shoulders composition
+- Include subtle visual cues related to their domain (e.g., a developer might have glasses and a laptop nearby, a fitness coach might have athletic wear)
+- Rich, appealing color palette — avoid dull or muted tones
+- Clean, simple gradient or solid color background — suitable for circular crop
+- Square format, centered composition, high visual impact even at small sizes
+- The character should feel modern, premium, and professional — like an avatar from a top-tier mobile app
+
+DO NOT create: aliens, robots, monsters, faceless figures, overly abstract art, or scary/dark imagery.";
 
             var config = new GenerateContentConfig
             {
