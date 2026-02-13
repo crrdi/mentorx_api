@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using MentorX.Domain.Entities;
+using MentorX.Domain.Enums;
 using System.Text.Json;
 
 namespace MentorX.Infrastructure.Data.DbContext;
@@ -178,7 +179,7 @@ public class MentorXDbContext : Microsoft.EntityFrameworkCore.DbContext
         modelBuilder.Entity<Actor>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.Type).HasConversion<int>();
+            entity.Property(e => e.Type).HasConversion<int>().HasDefaultValue(ActorType.User);
             
             entity.HasOne(e => e.User)
                 .WithMany()
